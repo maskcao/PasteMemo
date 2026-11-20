@@ -481,6 +481,8 @@ struct ShortcutsTab: View {
     @AppStorage("managerHotkeyGlobalEnabled") private var managerHotkeyGlobalEnabled = true
     @AppStorage("relayHotkeyKeyCode") private var relayKeyCode = -1
     @AppStorage("relayHotkeyModifiers") private var relayModifiers = -1
+    @AppStorage("screenshotHotkeyKeyCode") private var screenshotKeyCode = -1
+    @AppStorage("screenshotHotkeyModifiers") private var screenshotModifiers = -1
     @AppStorage("relayPasteKeyCode") private var relayPasteKeyCode = 0x09
     @AppStorage("relayPasteModifiers") private var relayPasteModifiers = controlKey
     @AppStorage("doubleTapEnabled") private var doubleTapEnabled = false
@@ -591,6 +593,28 @@ struct ShortcutsTab: View {
                     .font(.callout)
                     .foregroundStyle(.tertiary)
             }
+
+            Section(L10n.tr("settings.shortcuts.section.screenshot")) {
+                HStack {
+                    Text(L10n.tr("settings.screenshotShortcut"))
+                    Spacer()
+                    if hotkeyManager.isScreenshotCleared {
+                        Text(L10n.tr("settings.shortcut.none"))
+                            .foregroundStyle(.tertiary)
+                            .font(.callout)
+                    }
+                    ShortcutRecorder(keyCode: $screenshotKeyCode, modifiers: $screenshotModifiers, onChanged: applyScreenshotShortcut)
+                    ShortcutClearButton {
+                        hotkeyManager.clearScreenshotShortcut()
+                        screenshotKeyCode = -1
+                        screenshotModifiers = -1
+                    }
+                }
+
+                Text(L10n.tr("settings.screenshot.hint"))
+                    .font(.callout)
+                    .foregroundStyle(.tertiary)
+            }
         }
         .formStyle(.grouped)
     }
@@ -605,6 +629,10 @@ struct ShortcutsTab: View {
 
     private func applyRelayShortcut() {
         HotkeyManager.shared.updateRelayShortcut(keyCode: relayKeyCode, modifiers: relayModifiers)
+    }
+
+    private func applyScreenshotShortcut() {
+        HotkeyManager.shared.updateScreenshotShortcut(keyCode: screenshotKeyCode, modifiers: screenshotModifiers)
     }
 }
 

@@ -7,6 +7,7 @@ private let DEFAULT_MODIFIERS = cmdKey | shiftKey
 private let HOTKEY_ID_QUICK_PANEL: UInt32 = 1
 private let HOTKEY_ID_MANAGER: UInt32 = 2
 private let HOTKEY_ID_RELAY: UInt32 = 3
+private let HOTKEY_ID_SCREENSHOT: UInt32 = 4
 /// 置顶连续快粘：⌘1–9 的 hotkey ID 从此基址连续分配（10…18）
 private let HOTKEY_ID_QUICK_PASTE_DIGIT_BASE: UInt32 = 10
 private let MANAGER_HOTKEY_GLOBAL_ENABLED_KEY = "managerHotkeyGlobalEnabled"
@@ -40,6 +41,8 @@ private nonisolated func hotkeyEventHandler(
             AppAction.shared.openMainWindow?()
         case HOTKEY_ID_RELAY:
             RelayManager.shared.activate()
+        case HOTKEY_ID_SCREENSHOT:
+            ScreenshotCapture.shared.trigger()
         case HOTKEY_ID_QUICK_PASTE_DIGIT_BASE...(HOTKEY_ID_QUICK_PASTE_DIGIT_BASE + 8):
             // 置顶连续快粘：把 1–9 交给 QuickPanelView 粘贴对应项（不关面板）
             let index = Int(hotKeyID.id - HOTKEY_ID_QUICK_PASTE_DIGIT_BASE) + 1
@@ -61,6 +64,7 @@ final class HotkeyManager: ObservableObject {
     private var hotKeyRef: EventHotKeyRef?
     private var managerHotKeyRef: EventHotKeyRef?
     private var relayHotKeyRef: EventHotKeyRef?
+    private var screenshotHotKeyRef: EventHotKeyRef?
     /// 置顶期间临时注册的 ⌘1–9 全局热键；取消置顶/关闭面板时注销
     private var quickPasteDigitRefs: [EventHotKeyRef?] = []
     private var eventHandler: EventHandlerRef?
@@ -181,6 +185,42 @@ final class HotkeyManager: ObservableObject {
         objectWillChange.send()
     }
 
+    // MARK: - Screenshot Shortcut
+
+    var isScreenshotCleared: Bool {
+        UserDefaults.standard.object(forKey: "screenshotHotkeyKeyCode") == nil
+            || UserDefaults.standard.integer(forKey: "screenshotHotkeyKeyCode") == -1
+    }
+
+    var screenshotKeyCode: Int {
+        let stored = UserDefaults.standard.integer(forKey: "screenshotHotkeyKeyCode")
+        if stored == -1 { return -1 }
+        guard UserDefaults.standard.object(forKey: "screenshotHotkeyKeyCode") != nil else { return -1 }
+        return stored
+    }
+
+    var screenshotModifiers: Int {
+        let stored = UserDefaults.standard.integer(forKey: "screenshotHotkeyModifiers")
+        if stored == -1 { return 0 }
+        guard UserDefaults.standard.object(forKey: "screenshotHotkeyModifiers") != nil else { return 0 }
+        return stored
+    }
+
+    func updateScreenshotShortcut(keyCode: Int, modifiers: Int) {
+        UserDefaults.standard.set(keyCode, forKey: "screenshotHotkeyKeyCode")
+        UserDefaults.standard.set(modifiers, forKey: "screenshotHotkeyModifiers")
+        unregisterScreenshotHotKey()
+        registerScreenshotHotKey()
+        objectWillChange.send()
+    }
+
+    func clearScreenshotShortcut() {
+        UserDefaults.standard.set(-1, forKey: "screenshotHotkeyKeyCode")
+        UserDefaults.standard.set(-1, forKey: "screenshotHotkeyModifiers")
+        unregisterScreenshotHotKey()
+        objectWillChange.send()
+    }
+
     // MARK: - Registration
 
     private init() {}
@@ -210,6 +250,7 @@ final class HotkeyManager: ObservableObject {
         registerHotKey()
         registerManagerHotKey()
         registerRelayHotKey()
+        registerScreenshotHotKey()
         startDoubleTapDetector()
     }
 
@@ -225,6 +266,7 @@ final class HotkeyManager: ObservableObject {
         unregisterHotKey()
         unregisterManagerHotKey()
         unregisterRelayHotKey()
+        unregisterScreenshotHotKey()
         unregisterQuickPasteDigitHotkeys()
         if let handler = eventHandler {
             RemoveEventHandler(handler)
@@ -291,6 +333,28 @@ final class HotkeyManager: ObservableObject {
         guard let ref = relayHotKeyRef else { return }
         UnregisterEventHotKey(ref)
         relayHotKeyRef = nil
+    }
+
+    private func registerScreenshotHotKey() {
+        guard !isScreenshotCleared else { return }
+        var hotKeyID = EventHotKeyID()
+        hotKeyID.signature = HOTKEY_SIGNATURE
+        hotKeyID.id = HOTKEY_ID_SCREENSHOT
+
+        RegisterEventHotKey(
+            UInt32(screenshotKeyCode),
+            UInt32(screenshotModifiers),
+            hotKeyID,
+            GetApplicationEventTarget(),
+            0,
+            &screenshotHotKeyRef
+        )
+    }
+
+    private func unregisterScreenshotHotKey() {
+        guard let ref = screenshotHotKeyRef else { return }
+        UnregisterEventHotKey(ref)
+        screenshotHotKeyRef = nil
     }
 
     /// 面板置顶时调用：全局注册 ⌘1–9，使用户点进目标 App 后仍能连续快捷粘贴。

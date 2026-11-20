@@ -127,6 +127,13 @@
 "settings.shortcuts.section.quickPanel" = "Quick Paste";
 "settings.shortcuts.section.manager" = "Manager Window";
 "settings.shortcuts.section.relay" = "Relay";
+"settings.shortcuts.section.screenshot" = "Screenshot";
+"settings.screenshotShortcut" = "Screenshot Shortcut";
+"settings.screenshot.hint" = "Screenshots are copied to the clipboard; text is recognized automatically and becomes searchable.";
+"screenshot.permission.title" = "Screen Recording Permission Required";
+"screenshot.permission.message" = "Taking screenshots requires Screen Recording permission. Enable PasteMemo in System Settings → Privacy & Security → Screen Recording, then try again.";
+"screenshot.permission.openSettings" = "Open System Settings";
+"screenshot.failed.title" = "Failed to Start Screenshot";
 "settings.quickPanelShortcut" = "Quick Paste";
 "settings.managerShortcut" = "Open Manager";
 "settings.managerShortcut.global" = "Global";

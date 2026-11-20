@@ -119,6 +119,13 @@
 "settings.shortcuts.section.quickPanel" = "Incolla Rapido";
 "settings.shortcuts.section.manager" = "Finestra Gestore";
 "settings.shortcuts.section.relay" = "Staffetta";
+"settings.shortcuts.section.screenshot" = "Screenshot";
+"settings.screenshotShortcut" = "Scorciatoia screenshot";
+"settings.screenshot.hint" = "Gli screenshot vengono copiati negli Appunti; il testo viene riconosciuto automaticamente e diventa ricercabile.";
+"screenshot.permission.title" = "È richiesta l'autorizzazione di registrazione schermo";
+"screenshot.permission.message" = "Per gli screenshot è necessaria l'autorizzazione di registrazione schermo. Attiva PasteMemo in Impostazioni Sistema → Privacy e sicurezza → Registrazione schermo, poi riprova.";
+"screenshot.permission.openSettings" = "Apri Impostazioni Sistema";
+"screenshot.failed.title" = "Impossibile avviare lo screenshot";
 "settings.quickPanelShortcut" = "Incolla Rapido";
 "settings.managerShortcut" = "Apri Gestore";
 "settings.managerShortcut.global" = "Globale";

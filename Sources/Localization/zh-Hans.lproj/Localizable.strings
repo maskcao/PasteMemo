@@ -127,6 +127,13 @@
 "settings.shortcuts.section.quickPanel" = "快捷面板";
 "settings.shortcuts.section.manager" = "管理器窗口";
 "settings.shortcuts.section.relay" = "接力";
+"settings.shortcuts.section.screenshot" = "截图";
+"settings.screenshotShortcut" = "屏幕截图快捷键";
+"settings.screenshot.hint" = "截图将复制到剪贴板，图片会自动进行文字识别并进入搜索。";
+"screenshot.permission.title" = "需要屏幕录制权限";
+"screenshot.permission.message" = "截图功能需要屏幕录制权限。请在系统设置 → 隐私与安全性 → 屏幕录制中勾选 PasteMemo，然后重试。";
+"screenshot.permission.openSettings" = "打开系统设置";
+"screenshot.failed.title" = "截图启动失败";
 "settings.quickPanelShortcut" = "打开快捷面板";
 "settings.managerShortcut" = "打开管理器";
 "settings.managerShortcut.global" = "全局";

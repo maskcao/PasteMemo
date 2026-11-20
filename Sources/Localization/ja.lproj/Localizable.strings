@@ -157,6 +157,13 @@
 "settings.shortcuts.section.quickPanel" = "クイック貼り付け";
 "settings.shortcuts.section.manager" = "マネージャウインドウ";
 "settings.shortcuts.section.relay" = "リレー";
+"settings.shortcuts.section.screenshot" = "スクリーンショット";
+"settings.screenshotShortcut" = "スクリーンショットのショートカット";
+"settings.screenshot.hint" = "スクリーンショットはクリップボードにコピーされ、テキストが自動認識されて検索可能になります。";
+"screenshot.permission.title" = "画面収録の権限が必要です";
+"screenshot.permission.message" = "スクリーンショットには画面収録の権限が必要です。システム設定 → プライバシーとセキュリティ → 画面収録で PasteMemo を有効にしてから、もう一度お試しください。";
+"screenshot.permission.openSettings" = "システム設定を開く";
+"screenshot.failed.title" = "スクリーンショットを開始できませんでした";
 "settings.quickPanelShortcut" = "クイックペースト";
 "settings.managerShortcut" = "管理ツールを開く";
 "settings.managerShortcut.global" = "グローバル";

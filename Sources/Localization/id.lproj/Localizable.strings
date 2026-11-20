@@ -119,6 +119,13 @@
 "settings.shortcuts.section.quickPanel" = "Tempel Cepat";
 "settings.shortcuts.section.manager" = "Jendela Pengelola";
 "settings.shortcuts.section.relay" = "Relay";
+"settings.shortcuts.section.screenshot" = "Tangkapan Layar";
+"settings.screenshotShortcut" = "Pintasan Tangkapan Layar";
+"settings.screenshot.hint" = "Tangkapan layar disalin ke papan klip; teks dikenali secara otomatis dan dapat dicari.";
+"screenshot.permission.title" = "Perlu Izin Perekaman Layar";
+"screenshot.permission.message" = "Fitur tangkapan layar memerlukan izin Perekaman Layar. Aktifkan PasteMemo di Pengaturan Sistem → Privasi & Keamanan → Perekaman Layar, lalu coba lagi.";
+"screenshot.permission.openSettings" = "Buka Pengaturan Sistem";
+"screenshot.failed.title" = "Gagal Memulai Tangkapan Layar";
 "settings.quickPanelShortcut" = "Tempel Cepat";
 "settings.managerShortcut" = "Buka Pengelola";
 "settings.managerShortcut.global" = "Global";

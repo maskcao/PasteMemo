@@ -149,6 +149,13 @@
 "settings.shortcuts.section.quickPanel" = "Schnellpanel";
 "settings.shortcuts.section.manager" = "Verwaltungsfenster";
 "settings.shortcuts.section.relay" = "Relay";
+"settings.shortcuts.section.screenshot" = "Screenshot";
+"settings.screenshotShortcut" = "Screenshot-Tastenkürzel";
+"settings.screenshot.hint" = "Screenshots werden in die Zwischenablage kopiert; Text wird automatisch erkannt und ist durchsuchbar.";
+"screenshot.permission.title" = "Bildschirmaufnahme-Berechtigung erforderlich";
+"screenshot.permission.message" = "Für Screenshots ist die Berechtigung zur Bildschirmaufnahme erforderlich. Aktivieren Sie PasteMemo unter Systemeinstellungen → Datenschutz & Sicherheit → Bildschirmaufnahme und versuchen Sie es erneut.";
+"screenshot.permission.openSettings" = "Systemeinstellungen öffnen";
+"screenshot.failed.title" = "Screenshot konnte nicht gestartet werden";
 "settings.quickPanelShortcut" = "Schnelles Einfügen";
 "settings.managerShortcut" = "Manager öffnen";
 "settings.managerShortcut.global" = "Global";

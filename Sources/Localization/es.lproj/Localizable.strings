@@ -149,6 +149,13 @@
 "settings.shortcuts.section.quickPanel" = "Pegado rápido";
 "settings.shortcuts.section.manager" = "Ventana del gestor";
 "settings.shortcuts.section.relay" = "Relevo";
+"settings.shortcuts.section.screenshot" = "Captura de pantalla";
+"settings.screenshotShortcut" = "Atajo de captura de pantalla";
+"settings.screenshot.hint" = "Las capturas se copian al portapapeles; el texto se reconoce automáticamente y queda disponible para la búsqueda.";
+"screenshot.permission.title" = "Se necesita el permiso de grabación de pantalla";
+"screenshot.permission.message" = "La captura de pantalla requiere el permiso de grabación de pantalla. Active PasteMemo en Ajustes del Sistema → Privacidad y seguridad → Grabación de pantalla e inténtelo de nuevo.";
+"screenshot.permission.openSettings" = "Abrir Ajustes del Sistema";
+"screenshot.failed.title" = "No se pudo iniciar la captura de pantalla";
 "settings.quickPanelShortcut" = "Pegado rápido";
 "settings.managerShortcut" = "Abrir gestor";
 "settings.managerShortcut.global" = "Global";

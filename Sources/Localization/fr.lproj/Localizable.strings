@@ -149,6 +149,13 @@
 "settings.shortcuts.section.quickPanel" = "Collage rapide";
 "settings.shortcuts.section.manager" = "Fenêtre du gestionnaire";
 "settings.shortcuts.section.relay" = "Relais";
+"settings.shortcuts.section.screenshot" = "Capture d'écran";
+"settings.screenshotShortcut" = "Raccourci de capture d'écran";
+"settings.screenshot.hint" = "Les captures d'écran sont copiées dans le presse-papiers ; le texte est reconnu automatiquement et devient interrogeable.";
+"screenshot.permission.title" = "Autorisation d'enregistrement de l'écran requise";
+"screenshot.permission.message" = "La capture d'écran nécessite l'autorisation d'enregistrement de l'écran. Activez PasteMemo dans Réglages Système → Confidentialité et sécurité → Enregistrement de l'écran, puis réessayez.";
+"screenshot.permission.openSettings" = "Ouvrir les Réglages Système";
+"screenshot.failed.title" = "Impossible de démarrer la capture d'écran";
 "settings.quickPanelShortcut" = "Collage rapide";
 "settings.managerShortcut" = "Ouvrir le gestionnaire";
 "settings.managerShortcut.global" = "Global";

@@ -119,6 +119,13 @@
 "settings.shortcuts.section.quickPanel" = "Быстрая вставка";
 "settings.shortcuts.section.manager" = "Окно менеджера";
 "settings.shortcuts.section.relay" = "Эстафета";
+"settings.shortcuts.section.screenshot" = "Снимок экрана";
+"settings.screenshotShortcut" = "Сочетание клавиш для снимка экрана";
+"settings.screenshot.hint" = "Снимки экрана копируются в буфер обмена; текст распознаётся автоматически и становится доступным для поиска.";
+"screenshot.permission.title" = "Требуется разрешение на запись экрана";
+"screenshot.permission.message" = "Для снимков экрана требуется разрешение на запись экрана. Включите PasteMemo в Системных настройках → Конфиденциальность и безопасность → Запись экрана, затем повторите попытку.";
+"screenshot.permission.openSettings" = "Открыть Системные настройки";
+"screenshot.failed.title" = "Не удалось запустить снимок экрана";
 "settings.quickPanelShortcut" = "Быстрая вставка";
 "settings.managerShortcut" = "Открыть менеджер";
 "settings.managerShortcut.global" = "Глобально";
