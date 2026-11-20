@@ -132,6 +132,13 @@
 "action.annotate" = "注釈編集";
 "editor.screenshot.saveCopy" = "保存してコピー";
 "settings.screenshot.autoOpenEditor" = "キャプチャ後にエディターを開く";
+"editor.tool.arrow" = "矢印";
+"editor.tool.rectangle" = "長方形";
+"editor.tool.text" = "テキスト";
+"editor.tool.stepBadge" = "手順番号";
+"editor.tool.mosaic" = "モザイク";
+"editor.undo" = "元に戻す";
+"editor.redo" = "やり直す";
 "action.assignGroup" = "グループに割り当て";
 "action.newGroup" = "新規グループ…";
 "action.editGroup" = "グループを編集…";

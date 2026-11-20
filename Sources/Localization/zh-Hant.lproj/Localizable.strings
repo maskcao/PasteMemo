@@ -268,6 +268,13 @@
 "action.annotate" = "標註編輯";
 "editor.screenshot.saveCopy" = "儲存並複製";
 "settings.screenshot.autoOpenEditor" = "截圖後開啟標註編輯器";
+"editor.tool.arrow" = "箭頭";
+"editor.tool.rectangle" = "矩形";
+"editor.tool.text" = "文字";
+"editor.tool.stepBadge" = "步驟序號";
+"editor.tool.mosaic" = "馬賽克";
+"editor.undo" = "復原";
+"editor.redo" = "重做";
 "action.assignGroup" = "歸入分組";
 "action.newGroup" = "新建分組…";
 "action.editGroup" = "編輯分組…";

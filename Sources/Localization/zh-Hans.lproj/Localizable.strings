@@ -296,6 +296,13 @@
 "action.annotate" = "标注编辑";
 "editor.screenshot.saveCopy" = "保存并复制";
 "settings.screenshot.autoOpenEditor" = "截图后打开标注编辑器";
+"editor.tool.arrow" = "箭头";
+"editor.tool.rectangle" = "矩形";
+"editor.tool.text" = "文字";
+"editor.tool.stepBadge" = "步骤序号";
+"editor.tool.mosaic" = "马赛克";
+"editor.undo" = "撤销";
+"editor.redo" = "重做";
 "action.assignGroup" = "移入分组";
 "action.newGroup" = "新建分组…";
 "action.editGroup" = "编辑分组…";

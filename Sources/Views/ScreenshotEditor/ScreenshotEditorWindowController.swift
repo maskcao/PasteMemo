@@ -62,11 +62,12 @@ final class ScreenshotEditorWindowController: NSObject, NSWindowDelegate {
     }
 
     private func fitWindow(to imageSize: NSSize) {
-        let toolbarHeight: CGFloat = 78
+        // 工具条悬浮在图片区域底部：给底部留 ~60pt 余量，图片基本不被遮挡
+        let bottomSlack: CGFloat = 60
         let maxArea = NSSize(width: 1080, height: 660)
         let scale = min(1, maxArea.width / imageSize.width, maxArea.height / imageSize.height)
         let area = NSSize(width: imageSize.width * scale, height: imageSize.height * scale)
-        window?.setContentSize(NSSize(width: area.width, height: area.height + toolbarHeight))
+        window?.setContentSize(NSSize(width: area.width, height: area.height + bottomSlack))
         window?.center()
     }
 

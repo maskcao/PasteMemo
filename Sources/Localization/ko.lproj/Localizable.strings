@@ -124,6 +124,13 @@
 "action.annotate" = "주석 편집";
 "editor.screenshot.saveCopy" = "저장 후 복사";
 "settings.screenshot.autoOpenEditor" = "캡처 후 편집기 열기";
+"editor.tool.arrow" = "화살표";
+"editor.tool.rectangle" = "사각형";
+"editor.tool.text" = "텍스트";
+"editor.tool.stepBadge" = "단계 번호";
+"editor.tool.mosaic" = "모자이크";
+"editor.undo" = "실행 취소";
+"editor.redo" = "다시 실행";
 "action.assignGroup" = "그룹에 할당";
 "action.newGroup" = "새 그룹…";
 "action.editGroup" = "그룹 편집…";

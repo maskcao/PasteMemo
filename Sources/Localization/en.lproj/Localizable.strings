@@ -296,6 +296,13 @@
 "action.annotate" = "Annotate";
 "editor.screenshot.saveCopy" = "Save & Copy";
 "settings.screenshot.autoOpenEditor" = "Open editor after capturing";
+"editor.tool.arrow" = "Arrow";
+"editor.tool.rectangle" = "Rectangle";
+"editor.tool.text" = "Text";
+"editor.tool.stepBadge" = "Step number";
+"editor.tool.mosaic" = "Mosaic";
+"editor.undo" = "Undo";
+"editor.redo" = "Redo";
 "action.assignGroup" = "Assign to Group";
 "action.newGroup" = "New Group…";
 "action.editGroup" = "Edit Group…";

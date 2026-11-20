@@ -124,6 +124,13 @@
 "action.annotate" = "Annotieren";
 "editor.screenshot.saveCopy" = "Sichern & kopieren";
 "settings.screenshot.autoOpenEditor" = "Nach Aufnahme Editor öffnen";
+"editor.tool.arrow" = "Pfeil";
+"editor.tool.rectangle" = "Rechteck";
+"editor.tool.text" = "Text";
+"editor.tool.stepBadge" = "Schrittnummer";
+"editor.tool.mosaic" = "Mosaik";
+"editor.undo" = "Widerrufen";
+"editor.redo" = "Wiederholen";
 "action.assignGroup" = "Gruppe zuweisen";
 "action.newGroup" = "Neue Gruppe…";
 "action.editGroup" = "Gruppe bearbeiten…";

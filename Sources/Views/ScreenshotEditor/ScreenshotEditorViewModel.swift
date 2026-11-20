@@ -17,6 +17,16 @@ final class ScreenshotEditorViewModel {
             case .mosaic: "checkerboard.rectangle"
             }
         }
+
+        var helpKey: String {
+            switch self {
+            case .arrow: "editor.tool.arrow"
+            case .rectangle: "editor.tool.rectangle"
+            case .text: "editor.tool.text"
+            case .stepBadge: "editor.tool.stepBadge"
+            case .mosaic: "editor.tool.mosaic"
+            }
+        }
     }
 
     struct TextDraft {

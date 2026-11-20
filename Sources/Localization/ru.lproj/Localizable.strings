@@ -269,6 +269,13 @@
 "action.annotate" = "Аннотировать";
 "editor.screenshot.saveCopy" = "Сохранить и скопировать";
 "settings.screenshot.autoOpenEditor" = "Открывать редактор после снимка";
+"editor.tool.arrow" = "Стрелка";
+"editor.tool.rectangle" = "Прямоугольник";
+"editor.tool.text" = "Текст";
+"editor.tool.stepBadge" = "Номер шага";
+"editor.tool.mosaic" = "Мозаика";
+"editor.undo" = "Отменить";
+"editor.redo" = "Вернуть";
 "action.assignGroup" = "Назначить группу";
 "action.newGroup" = "Новая группа…";
 "action.editGroup" = "Редактировать группу…";

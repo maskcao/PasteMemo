@@ -53,10 +53,11 @@ struct ScreenshotEditorView: View {
     private var isImageValid: Bool { imgW >= 1 && imgH >= 1 }
 
     var body: some View {
-        VStack(spacing: 0) {
+        // 钉钉式：工具条悬浮在图片区域底部，而不是占用独立的窗口行
+        ZStack(alignment: .bottom) {
             canvas
-            Divider()
             toolbar
+                .padding(.bottom, 12)
         }
         .background(Color(nsColor: .windowBackgroundColor))
     }
@@ -129,19 +130,15 @@ struct ScreenshotEditorView: View {
         }
     }
 
-    // MARK: - Toolbar
+    // MARK: - Toolbar（钉钉式：单行图标悬浮条）
 
     private var toolbar: some View {
-        VStack(spacing: 6) {
-            toolRow
-            actionRow
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-    }
-
-    private var toolRow: some View {
         HStack(spacing: 8) {
+            Text("\(Int(imgW)) × \(Int(imgH))")
+                .font(.system(size: 11))
+                .monospacedDigit()
+                .foregroundStyle(.tertiary)
+            Divider().frame(height: 18)
             ForEach(ScreenshotEditorViewModel.Tool.allCases, id: \.self) { tool in
                 toolButton(tool)
             }
@@ -157,49 +154,75 @@ struct ScreenshotEditorView: View {
             Button {
                 viewModel.undo()
             } label: {
-                Image(systemName: "arrow.uturn.backward.circle")
-                    .font(.system(size: 14))
+                Image(systemName: "arrow.uturn.backward")
+                    .font(.system(size: 13, weight: .semibold))
                     .frame(width: 26, height: 26)
+                    .foregroundStyle(viewModel.canUndo ? Color.primary : Color.primary.opacity(0.3))
             }
             .buttonStyle(.plain)
             .disabled(!viewModel.canUndo)
             .keyboardShortcut("z", modifiers: .command)
+            .help(L10n.tr("editor.undo"))
 
             Button {
                 viewModel.redo()
             } label: {
-                Image(systemName: "arrow.uturn.forward.circle")
-                    .font(.system(size: 14))
+                Image(systemName: "arrow.uturn.forward")
+                    .font(.system(size: 13, weight: .semibold))
                     .frame(width: 26, height: 26)
+                    .foregroundStyle(viewModel.canRedo ? Color.primary : Color.primary.opacity(0.3))
             }
             .buttonStyle(.plain)
             .disabled(!viewModel.canRedo)
             .keyboardShortcut("z", modifiers: [.command, .shift])
-        }
-    }
+            .help(L10n.tr("editor.redo"))
 
-    private var actionRow: some View {
-        HStack(spacing: 10) {
-            Text("\(Int(imgW)) × \(Int(imgH))")
-                .font(.system(size: 12))
-                .monospacedDigit()
-                .foregroundStyle(.tertiary)
-            Spacer()
-            Button(L10n.tr("action.cancel")) {
+            Spacer(minLength: 6)
+            Divider().frame(height: 18)
+
+            Button {
                 // Esc（.cancelAction）在文字输入中先只取消文字，再按一次才关窗口
                 if viewModel.textDraft != nil {
                     viewModel.cancelText()
                 } else {
                     onClose()
                 }
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 12, weight: .semibold))
+                    .frame(width: 26, height: 26)
+                    .foregroundStyle(.primary)
             }
+            .buttonStyle(.plain)
             .keyboardShortcut(.cancelAction)
-            Button(L10n.tr("editor.screenshot.saveCopy")) {
+            .help(L10n.tr("action.cancel"))
+
+            Button {
                 save()
+            } label: {
+                Image(systemName: "checkmark")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 26, height: 26)
+                    .background(Color.accentColor, in: Circle())
             }
+            .buttonStyle(.plain)
             // ⌘↩ 而不是裸 Return：避免文字输入按回车时误触保存
             .keyboardShortcut(.return, modifiers: .command)
+            .help(L10n.tr("editor.screenshot.saveCopy"))
         }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(Color(nsColor: .controlBackgroundColor))
+                .shadow(color: .black.opacity(0.22), radius: 9, y: 3)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .strokeBorder(Color.primary.opacity(0.1), lineWidth: 1)
+        )
+        .padding(.horizontal, 16)
     }
 
     private func toolButton(_ tool: ScreenshotEditorViewModel.Tool) -> some View {
@@ -216,6 +239,7 @@ struct ScreenshotEditorView: View {
                 )
         }
         .buttonStyle(.plain)
+        .help(L10n.tr(tool.helpKey))
     }
 
     private func colorDot(_ index: Int) -> some View {
