@@ -666,6 +666,11 @@ struct MainWindowView: View {
             let mark = multi ? !hasSensitive : !item.isSensitive
             ActionExecutor.applyMetadata([mark ? .markSensitive : .unmarkSensitive], to: targetItems, context: modelContext)
         })
+        if !multi, item.contentType == .image, item.imageData != nil {
+            menu.append(.item(L10n.tr("action.annotate")) {
+                ScreenshotEditorWindowController.present(item: item)
+            })
+        }
         if multi, selectedClipItems.allSatisfy({ $0.contentType.isMergeable }) {
             menu.append(.item(L10n.tr("action.merge")) { mergeSelectedItems() })
         }

@@ -293,6 +293,8 @@
 "action.paste" = "粘贴";
 "action.cancel" = "取消";
 "action.confirm" = "确定";
+"action.annotate" = "标注编辑";
+"editor.screenshot.saveCopy" = "保存并复制";
 "action.assignGroup" = "移入分组";
 "action.newGroup" = "新建分组…";
 "action.editGroup" = "编辑分组…";

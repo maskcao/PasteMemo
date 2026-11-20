@@ -293,6 +293,8 @@
 "action.paste" = "Paste";
 "action.cancel" = "Cancel";
 "action.confirm" = "OK";
+"action.annotate" = "Annotate";
+"editor.screenshot.saveCopy" = "Save & Copy";
 "action.assignGroup" = "Assign to Group";
 "action.newGroup" = "New Group…";
 "action.editGroup" = "Edit Group…";

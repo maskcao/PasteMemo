@@ -266,6 +266,8 @@
 "action.paste" = "Tempel";
 "action.cancel" = "Batal";
 "action.confirm" = "OK";
+"action.annotate" = "Anotasi";
+"editor.screenshot.saveCopy" = "Simpan & Salin";
 "action.assignGroup" = "Tetapkan ke Grup";
 "action.newGroup" = "Grup Baru…";
 "action.editGroup" = "Edit Grup…";

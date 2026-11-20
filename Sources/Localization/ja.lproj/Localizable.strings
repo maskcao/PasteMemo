@@ -129,6 +129,8 @@
 "action.paste" = "ペースト";
 "action.cancel" = "キャンセル";
 "action.confirm" = "OK";
+"action.annotate" = "注釈編集";
+"editor.screenshot.saveCopy" = "保存してコピー";
 "action.assignGroup" = "グループに割り当て";
 "action.newGroup" = "新規グループ…";
 "action.editGroup" = "グループを編集…";

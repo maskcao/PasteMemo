@@ -2369,6 +2369,12 @@ struct QuickPanelView: View {
             ActionExecutor.applyMetadata([item.isSensitive ? .unmarkSensitive : .markSensitive], to: [item], context: modelContext)
             selectItem(itemID)
         })
+        if item.contentType == .image, item.imageData != nil {
+            menu.append(.item(L10n.tr("action.annotate")) {
+                ScreenshotEditorWindowController.present(item: item)
+                selectItem(itemID)
+            })
+        }
         if ProManager.AUTOMATION_ENABLED {
             let manualRules = fetchEnabledRules()
                 .filter { $0.triggerMode == .manual && $0.matches(item: item, targetAppBundleID: pasteTargetBundleID) }

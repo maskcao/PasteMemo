@@ -121,6 +121,8 @@
 "action.paste" = "붙여넣기";
 "action.cancel" = "취소";
 "action.confirm" = "확인";
+"action.annotate" = "주석 편집";
+"editor.screenshot.saveCopy" = "저장 후 복사";
 "action.assignGroup" = "그룹에 할당";
 "action.newGroup" = "새 그룹…";
 "action.editGroup" = "그룹 편집…";

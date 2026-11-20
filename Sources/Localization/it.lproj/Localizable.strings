@@ -266,6 +266,8 @@
 "action.paste" = "Incolla";
 "action.cancel" = "Annulla";
 "action.confirm" = "OK";
+"action.annotate" = "Annota";
+"editor.screenshot.saveCopy" = "Salva e copia";
 "action.assignGroup" = "Assegna al gruppo";
 "action.newGroup" = "Nuovo gruppo…";
 "action.editGroup" = "Modifica gruppo…";

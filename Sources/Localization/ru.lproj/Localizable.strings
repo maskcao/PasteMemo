@@ -266,6 +266,8 @@
 "action.paste" = "Вставить";
 "action.cancel" = "Отмена";
 "action.confirm" = "ОК";
+"action.annotate" = "Аннотировать";
+"editor.screenshot.saveCopy" = "Сохранить и скопировать";
 "action.assignGroup" = "Назначить группу";
 "action.newGroup" = "Новая группа…";
 "action.editGroup" = "Редактировать группу…";

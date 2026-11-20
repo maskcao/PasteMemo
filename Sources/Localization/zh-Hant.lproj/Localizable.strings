@@ -265,6 +265,8 @@
 "action.paste" = "貼上";
 "action.cancel" = "取消";
 "action.confirm" = "確定";
+"action.annotate" = "標註編輯";
+"editor.screenshot.saveCopy" = "儲存並複製";
 "action.assignGroup" = "歸入分組";
 "action.newGroup" = "新建分組…";
 "action.editGroup" = "編輯分組…";

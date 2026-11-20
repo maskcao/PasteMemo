@@ -126,6 +126,7 @@ struct ClipDetailView: View {
                     editButtons
                 } else {
                     copyButton
+                    if item.contentType == .image, item.imageData != nil { annotateButton }
                     if isEditableType { editButtons }
                     sensitiveButton
                     pinButton
@@ -145,6 +146,17 @@ struct ClipDetailView: View {
             )
         } label: {
             Label(L10n.tr("action.copy"), systemImage: "doc.on.doc")
+                .font(.system(size: 12))
+        }
+        .buttonStyle(.bordered)
+        .controlSize(.small)
+    }
+
+    private var annotateButton: some View {
+        Button {
+            ScreenshotEditorWindowController.present(item: item)
+        } label: {
+            Label(L10n.tr("action.annotate"), systemImage: "pencil.and.outline")
                 .font(.system(size: 12))
         }
         .buttonStyle(.bordered)

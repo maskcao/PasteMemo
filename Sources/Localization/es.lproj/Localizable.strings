@@ -121,6 +121,8 @@
 "action.paste" = "Pegar";
 "action.cancel" = "Cancelar";
 "action.confirm" = "Aceptar";
+"action.annotate" = "Anotar";
+"editor.screenshot.saveCopy" = "Guardar y copiar";
 "action.assignGroup" = "Asignar a grupo";
 "action.newGroup" = "Nuevo grupo…";
 "action.editGroup" = "Editar grupo…";
