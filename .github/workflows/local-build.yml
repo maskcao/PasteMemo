@@ -28,8 +28,14 @@ jobs:
           echo "$P12_BASE64" | base64 --decode > /tmp/pastememo-signing.p12
           openssl pkcs12 -in /tmp/pastememo-signing.p12 -passin "pass:$P12_PASSWORD" -nodes -nokeys -out /tmp/signing-cert.pem
           openssl pkcs12 -in /tmp/pastememo-signing.p12 -passin "pass:$P12_PASSWORD" -nodes -nocerts -out /tmp/signing-key.pem
-          security import /tmp/signing-cert.pem -k "$HOME/Library/Keychains/login.keychain-db"
-          security import /tmp/signing-key.pem -k "$HOME/Library/Keychains/login.keychain-db" -T /usr/bin/codesign
+          # Dedicated keychain + partition list: without the partition-list grant,
+          # codesign's key access pops an authorization dialog that hangs forever
+          # on a headless runner.
+          security create-keychain -p pastememo-build build.keychain
+          security import /tmp/signing-cert.pem -k build.keychain
+          security import /tmp/signing-key.pem -k build.keychain -T /usr/bin/codesign
+          security list-keychain -d user -s build.keychain login.keychain-db
+          security set-key-partition-list -S apple-tool:,apple: -s -k pastememo-build build.keychain
           # sudo + admin-domain trust: the user-domain variant pops an authorization
           # dialog that no one can dismiss on a headless runner (hangs the step).
           sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain /tmp/signing-cert.pem
