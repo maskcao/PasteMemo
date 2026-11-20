@@ -123,6 +123,7 @@
 "action.confirm" = "OK";
 "action.annotate" = "Annotieren";
 "editor.screenshot.saveCopy" = "Sichern & kopieren";
+"settings.screenshot.autoOpenEditor" = "Nach Aufnahme Editor öffnen";
 "action.assignGroup" = "Gruppe zuweisen";
 "action.newGroup" = "Neue Gruppe…";
 "action.editGroup" = "Gruppe bearbeiten…";

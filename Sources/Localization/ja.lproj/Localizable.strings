@@ -131,6 +131,7 @@
 "action.confirm" = "OK";
 "action.annotate" = "注釈編集";
 "editor.screenshot.saveCopy" = "保存してコピー";
+"settings.screenshot.autoOpenEditor" = "キャプチャ後にエディターを開く";
 "action.assignGroup" = "グループに割り当て";
 "action.newGroup" = "新規グループ…";
 "action.editGroup" = "グループを編集…";

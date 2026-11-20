@@ -268,6 +268,7 @@
 "action.confirm" = "ОК";
 "action.annotate" = "Аннотировать";
 "editor.screenshot.saveCopy" = "Сохранить и скопировать";
+"settings.screenshot.autoOpenEditor" = "Открывать редактор после снимка";
 "action.assignGroup" = "Назначить группу";
 "action.newGroup" = "Новая группа…";
 "action.editGroup" = "Редактировать группу…";
