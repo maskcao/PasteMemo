@@ -27,7 +27,7 @@ final class ScreenshotEditorWindowController: NSObject, NSWindowDelegate {
         let window = ensureWindow()
         hostingView?.rootView = ScreenshotEditorView(
             image: image,
-            onSave: { [weak self] in self?.saveToClipboard() },
+            onSave: { [weak self] pngData in self?.saveToClipboard(pngData: pngData) },
             onClose: { [weak self] in self?.window?.close() }
         )
         window.title = L10n.tr("action.annotate")
@@ -44,7 +44,7 @@ final class ScreenshotEditorWindowController: NSObject, NSWindowDelegate {
         if let window { return window }
         let hosting = NSHostingView(rootView: ScreenshotEditorView(
             image: NSImage(),
-            onSave: {},
+            onSave: { _ in },
             onClose: {}
         ))
         let window = NSWindow(
@@ -62,22 +62,18 @@ final class ScreenshotEditorWindowController: NSObject, NSWindowDelegate {
     }
 
     private func fitWindow(to imageSize: NSSize) {
-        let toolbarHeight: CGFloat = 44
-        let maxArea = NSSize(width: 1080, height: 690)
+        let toolbarHeight: CGFloat = 78
+        let maxArea = NSSize(width: 1080, height: 660)
         let scale = min(1, maxArea.width / imageSize.width, maxArea.height / imageSize.height)
         let area = NSSize(width: imageSize.width * scale, height: imageSize.height * scale)
         window?.setContentSize(NSSize(width: area.width, height: area.height + toolbarHeight))
         window?.center()
     }
 
-    private func saveToClipboard() {
-        guard let image = currentImage,
-              let tiff = image.tiffRepresentation,
-              let rep = NSBitmapImageRep(data: tiff),
-              let png = rep.representation(using: .png, properties: [:]) else { return }
+    private func saveToClipboard(pngData: Data) {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
-        pasteboard.setData(png, forType: .png)
+        pasteboard.setData(pngData, forType: .png)
         ToastCenter.shared.show(ToastDescriptor(message: L10n.tr("action.copied"), icon: .success))
         window?.close()
     }
@@ -85,7 +81,7 @@ final class ScreenshotEditorWindowController: NSObject, NSWindowDelegate {
     // MARK: - NSWindowDelegate
 
     func windowWillClose(_ notification: Notification) {
-        hostingView?.rootView = ScreenshotEditorView(image: NSImage(), onSave: {}, onClose: {})
+        hostingView?.rootView = ScreenshotEditorView(image: NSImage(), onSave: { _ in }, onClose: {})
         currentImage = nil
     }
 }
