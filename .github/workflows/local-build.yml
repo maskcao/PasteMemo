@@ -27,3 +27,5 @@ jobs:
           name: PasteMemo-dmg-${{ github.run_number }}
           path: dist/*.dmg
           if-no-files-found: error
+
+# Trigger re-registration after enabling Actions on a fresh repo.
