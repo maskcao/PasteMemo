@@ -1,0 +1,1445 @@
+import SwiftUI
+import SwiftData
+import ServiceManagement
+import Carbon
+
+/// 设置窗口侧边栏。窗口骨架是 AppKit 的 `SettingsSplitViewController`，
+/// 这里只负责这一栏的内容；宽度和分隔线由那边管。
+struct SettingsSidebar: View {
+    @EnvironmentObject private var nav: SettingsNavigationModel
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 2) {
+                group(SettingsCategory.functionGroup.filter(isVisible))
+                group(SettingsCategory.dataPrivacyGroup)
+                group(SettingsCategory.aboutGroup)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+        }
+        .scrollContentBackground(.hidden)
+    }
+
+    @ViewBuilder
+    private func group(_ categories: [SettingsCategory]) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            ForEach(categories) { sidebarRow($0) }
+        }
+        .padding(.bottom, 10)
+    }
+
+    /// 侧边栏一行：彩色圆角图标块 + 页名，尺寸照系统设置。
+    ///
+    /// 不用 `List`：它底层是 NSTableView，首次填充时行带着插入动画从下往上滑进来，
+    /// 打开窗口能明显看见图标「噗」一下窜上去（实测 AppKit 那层的 frame / insets
+    /// 全程不动，动的就是这个行插入动画），SwiftUI 侧的 `.transaction` 压不住它。
+    /// 侧边栏统共十来行固定项，不需要虚拟化，自绘反而把留白和行高抓得更准。
+    private func sidebarRow(_ category: SettingsCategory) -> some View {
+        let isSelected = nav.selection == category
+        return HStack(spacing: 8) {
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(category.tileColor.gradient)
+                .frame(width: 22, height: 22)
+                .overlay(
+                    Image(systemName: category.icon)
+                        .font(.system(size: 11.5, weight: .semibold))
+                        .foregroundStyle(.white)
+                )
+            Text(L10n.tr(category.titleKey))
+                .font(.system(size: 13))
+                .foregroundStyle(isSelected ? Color.white : Color.primary)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 5)
+        .background(
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(isSelected ? Color.accentColor : Color.clear)
+        )
+        .contentShape(Rectangle())
+        .onTapGesture { nav.select(category) }
+        .pointerCursor()
+    }
+
+    /// 自动化条目仅在启用时出现。
+    private func isVisible(_ category: SettingsCategory) -> Bool {
+        category != .automation || ProManager.AUTOMATION_ENABLED
+    }
+}
+
+/// 设置窗口详情区。标题栏那对前进/后退箭头也挂在这里（经 hosting controller 桥接）。
+struct SettingsDetail: View {
+    @EnvironmentObject private var nav: SettingsNavigationModel
+    /// 数据页和它推进去的两个存储页共用：扫描结果、筛选条件在页面之间来回时保留。
+    @StateObject private var storage = StorageModel()
+
+    var body: some View {
+        content
+            .environmentObject(storage)
+            // 删除、转换跑完前不让关；三个存储页共用这一个
+            .sheet(isPresented: Binding(get: { storage.job != nil }, set: { _ in })) {
+                if let job = storage.job { StorageJobSheet(job: job) }
+            }
+            // 去掉标题栏底色和那条分隔线，内容直接从顶部开始，同系统设置
+            .toolbarBackground(.hidden, for: .windowToolbar)
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        if nav.selection == .data, let subpage = nav.subpage {
+            switch subpage {
+            case .storageManage: StorageManagePane()
+            case .storageGroup(let key): StorageGroupPane(key: key)
+            }
+        } else {
+            detailView(for: nav.selection)
+        }
+    }
+
+    @ViewBuilder
+    private func detailView(for category: SettingsCategory) -> some View {
+        switch category {
+        case .general: GeneralPane()
+        case .appearance: AppearancePane()
+        case .quickPanel: QuickPanelPane()
+        case .preview: PreviewPane()
+        case .shortcuts: ShortcutsTab()
+        case .privacy: PrivacyTab()
+        case .aiAgents: AIAgentIntegrationView()
+        case .aiService: AIServicePane()
+        case .automation: AutomationTab()
+        case .data: DataPane()
+        case .sponsor: SponsorTab()
+        case .about: AboutTab()
+        }
+    }
+}
+
+// MARK: - Settings Category
+
+enum SettingsCategory: String, CaseIterable, Identifiable, Hashable {
+    case general, appearance, quickPanel, preview
+    case shortcuts, privacy, aiAgents, aiService, automation, data
+    case sponsor, about
+
+    var id: String { rawValue }
+
+    /// 功能设置：基础(通用/外观) → 快捷面板(快捷键/面板/预览与识别) → 进阶(AI/自动化)。
+    static let functionGroup: [SettingsCategory] =
+        [.general, .appearance, .shortcuts, .quickPanel, .preview,
+         .aiAgents, .aiService, .automation]
+
+    /// 数据与隐私。
+    static let dataPrivacyGroup: [SettingsCategory] = [.privacy, .data]
+
+    /// 应用信息。
+    static let aboutGroup: [SettingsCategory] = [.sponsor, .about]
+
+    var titleKey: String {
+        switch self {
+        case .general: return "settings.general"
+        case .appearance: return "settings.appearance"
+        case .quickPanel: return "settings.quickPanel"
+        case .preview: return "settings.previewRecognition"
+        case .shortcuts: return "settings.shortcuts"
+        case .privacy: return "settings.privacy"
+        case .aiAgents: return "settings.tab.aiAgents"
+        case .aiService: return "settings.aiService"
+        case .automation: return "settings.automation"
+        case .data: return "dataPorter.section"
+        case .sponsor: return "settings.sponsor"
+        case .about: return "settings.about"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .general: return "gear"
+        case .appearance: return "paintbrush"
+        case .quickPanel: return "list.bullet.rectangle"
+        case .preview: return "text.viewfinder"
+        case .shortcuts: return "keyboard"
+        case .privacy: return "lock.shield"
+        case .aiAgents: return "sparkles.rectangle.stack"
+        case .aiService: return "brain"
+        case .automation: return "gearshape.2"
+        case .data: return "externaldrive"
+        case .sponsor: return "heart"
+        case .about: return "info.circle"
+        }
+    }
+}
+
+extension SettingsCategory {
+    /// 侧边栏图标块底色。
+    var tileColor: Color {
+        switch self {
+        case .general: return .gray
+        case .appearance: return .pink
+        case .shortcuts: return .indigo
+        case .quickPanel: return .blue
+        case .preview: return .teal
+        case .aiAgents: return .orange
+        case .aiService: return .mint
+        case .automation: return .purple
+        case .privacy: return .blue
+        case .data: return .green
+        case .sponsor: return .red
+        case .about: return .gray
+        }
+    }
+}
+
+// MARK: - SMS Code Section
+
+/// 短信验证码：开关(默认关) + 完全磁盘访问权限引导。嵌在「预览与识别」页。
+struct SMSCodeSection: View {
+    @AppStorage(SMSCodeWatcher.enabledKey) private var smsCodeEnabled = false
+    @ObservedObject private var smsWatcher = SMSCodeWatcher.shared
+
+    var body: some View {
+        Section {
+            Toggle(L10n.tr("settings.smsCode.enabled"), isOn: $smsCodeEnabled)
+                .onChange(of: smsCodeEnabled) {
+                    // 默认关闭;打开时才启动 watcher,由它检测完全磁盘访问权限
+                    // 并通过 hasFullDiskAccess 驱动下面的授权引导行。
+                    if smsCodeEnabled {
+                        SMSCodeWatcher.shared.startIfEnabled()
+                    } else {
+                        SMSCodeWatcher.shared.stop()
+                    }
+                }
+            if smsCodeEnabled {
+                if smsWatcher.hasFullDiskAccess {
+                    Label(L10n.tr("settings.smsCode.granted"), systemImage: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                        .font(.callout)
+                } else {
+                    HStack {
+                        Label(L10n.tr("settings.smsCode.needsFDA"), systemImage: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.orange)
+                            .font(.callout)
+                        Spacer()
+                        Button(L10n.tr("settings.smsCode.openSettings")) {
+                            openFullDiskAccessSettings()
+                        }
+                        .pointerCursor()
+                    }
+                }
+            }
+        } header: {
+            Text(L10n.tr("settings.smsCode"))
+        } footer: {
+            VStack(alignment: .leading, spacing: 8) {
+                footerRow("info.circle", Text(L10n.tr("settings.smsCode.description")))
+                footerRow("iphone", Text(L10n.tr("settings.smsCode.hint")))
+                footerRow("exclamationmark.bubble", Text(feedbackLine))
+            }
+            .font(.footnote)
+        }
+    }
+
+    /// Feedback sentence with an inline tappable link — built as AttributedString
+    /// so the link keeps its accent color inside the secondary-styled footer.
+    private var feedbackLine: AttributedString {
+        var line = AttributedString(L10n.tr("settings.smsCode.feedback") + " ")
+        var link = AttributedString(L10n.tr("settings.smsCode.feedbackLink"))
+        link.link = URL(string: "https://github.com/lifedever/PasteMemo-app/issues")
+        link.foregroundColor = Color.accentColor
+        return line + link
+    }
+
+    private func footerRow(_ icon: String, _ text: Text) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Image(systemName: icon)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .frame(width: 14, alignment: .center)
+            text
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private func openFullDiskAccessSettings() {
+        // 先触发一次 TCC 登记,让 PasteMemo 出现在完全磁盘访问列表里(开关关闭),
+        // 用户不用再点「+」手动找 App。
+        SMSCodeWatcher.registerInFullDiskAccessPane()
+        guard let url = URL(
+            string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles"
+        ) else { return }
+        NSWorkspace.shared.open(url)
+    }
+}
+
+// MARK: - General Pane
+
+struct GeneralPane: View {
+    @AppStorage("launchAtLogin") private var launchAtLogin = false
+    @AppStorage("hideDockIcon") private var hideDockIcon = false
+    @State private var showHideDockConfirm = false
+    // 默认值必须与 SoundManager.isEnabled 的兜底一致（false），否则界面显示开、播放层读到关
+    @AppStorage("soundEnabled") private var soundEnabled = false
+    @AppStorage("copySoundName") private var copySoundName = "custom:sound2"
+    @AppStorage("pasteSoundName") private var pasteSoundName = "custom:sound1"
+    @AppStorage("clipboardMonitoringEnabled") private var clipboardMonitoringEnabled = true
+    @ObservedObject private var languageManager = LanguageManager.shared
+    @State private var previousLanguage = LanguageManager.shared.current
+
+    var body: some View {
+        Form {
+            Section(L10n.tr("settings.general")) {
+                Toggle(L10n.tr("settings.clipboardMonitoring"), isOn: $clipboardMonitoringEnabled)
+                Toggle(L10n.tr("settings.launchAtLogin"), isOn: $launchAtLogin)
+                    .onChange(of: launchAtLogin) {
+                        if launchAtLogin {
+                            try? SMAppService.mainApp.register()
+                        } else {
+                            try? SMAppService.mainApp.unregister()
+                        }
+                    }
+                Toggle(L10n.tr("settings.hideDockIcon"), isOn: Binding(
+                    get: { hideDockIcon },
+                    set: { newValue in
+                        if newValue {
+                            showHideDockConfirm = true
+                        } else {
+                            hideDockIcon = false
+                            NSApp.setActivationPolicy(.regular)
+                            NSApp.activate(ignoringOtherApps: true)
+                        }
+                    }
+                ))
+                .alert(L10n.tr("settings.hideDockIcon.confirm.title"), isPresented: $showHideDockConfirm) {
+                    Button(L10n.tr("settings.hideDockIcon.confirm.ok")) {
+                        hideDockIcon = true
+                        for window in NSApp.windows where window.isVisible && window.canBecomeMain {
+                            window.close()
+                        }
+                        NSApp.setActivationPolicy(.accessory)
+                    }
+                    Button(L10n.tr("action.cancel"), role: .cancel) {}
+                } message: {
+                    Text(L10n.tr("settings.hideDockIcon.confirm.message"))
+                }
+                Text(L10n.tr("settings.hideDockIcon.hint"))
+                    .font(.callout)
+                    .foregroundStyle(.tertiary)
+                Picker(L10n.tr("settings.language"), selection: $languageManager.current) {
+                    ForEach(L10n.supportedLanguages, id: \.code) { lang in
+                        Text(lang.name).tag(lang.code)
+                    }
+                }
+                .onChange(of: languageManager.current) {
+                    guard languageManager.current != previousLanguage else { return }
+                    previousLanguage = languageManager.current
+                    showLanguageRestartAlert()
+                }
+            }
+
+            Section(L10n.tr("settings.sound")) {
+                Toggle(L10n.tr("settings.sound.enabled"), isOn: $soundEnabled)
+                if soundEnabled {
+                    soundPicker(
+                        label: L10n.tr("settings.sound.copy"),
+                        selection: $copySoundName
+                    )
+                    soundPicker(
+                        label: L10n.tr("settings.sound.paste"),
+                        selection: $pasteSoundName
+                    )
+                }
+            }
+
+            Section {
+                Button(L10n.tr("settings.showGuide")) {
+                    showOnboardingWindow()
+                }
+                .pointerCursor()
+            }
+
+            // 诊断:导出日志(issue #66,查清后移除)
+            Section(L10n.tr("settings.diagnostics")) {
+                Button((DiagnosticLog.isHealthy ? "" : "⚠️ ") + L10n.tr("settings.diagnostics.export")) {
+                    DiagnosticLog.exportLog()
+                }
+                .pointerCursor()
+            }
+        }
+        .formStyle(.grouped)
+    }
+
+    private func soundPicker(label: String, selection: Binding<String>) -> some View {
+        HStack {
+            Picker(label, selection: selection) {
+                Section(L10n.tr("settings.sound.section.custom")) {
+                    ForEach(SoundManager.CUSTOM_SOUNDS, id: \.storageKey) { source in
+                        Text(source.displayName).tag(source.storageKey)
+                    }
+                }
+                Section(L10n.tr("settings.sound.section.system")) {
+                    ForEach(SoundManager.SYSTEM_SOUNDS, id: \.storageKey) { source in
+                        Text(source.displayName).tag(source.storageKey)
+                    }
+                }
+            }
+            Button {
+                SoundManager.preview(.from(storageKey: selection.wrappedValue))
+            } label: {
+                Image(systemName: "play.circle")
+            }
+            .buttonStyle(.borderless)
+            .pointerCursor()
+        }
+        .onChange(of: selection.wrappedValue) {
+            SoundManager.preview(.from(storageKey: selection.wrappedValue))
+        }
+    }
+
+    private func showLanguageRestartAlert() {
+        let alert = NSAlert()
+        alert.messageText = L10n.tr("settings.language.restart_title")
+        alert.informativeText = L10n.tr("settings.language.restart_message")
+        alert.addButton(withTitle: L10n.tr("settings.language.restart_now"))
+        alert.addButton(withTitle: L10n.tr("settings.language.restart_later"))
+        if alert.runModal() == .alertFirstButtonReturn {
+            relaunchApp()
+        }
+    }
+
+    private func relaunchApp() {
+        let path = Bundle.main.bundleURL.path
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/bin/sh")
+        task.arguments = ["-c", "sleep 1 && open \"\(path)\""]
+        task.launch()
+        AppDelegate.shouldReallyQuit = true
+        NSApp.terminate(nil)
+    }
+}
+
+// MARK: - Appearance Pane
+
+struct AppearancePane: View {
+    @AppStorage("appearanceMode") private var appearanceMode = "system"
+    @AppStorage("menuBarIconStyle") private var menuBarIconStyle = "outline"
+    @AppStorage(MenuBarLeftClickAction.storageKey) private var menuBarLeftClickActionRaw = MenuBarLeftClickAction.menu.rawValue
+
+    var body: some View {
+        Form {
+            Section(L10n.tr("settings.appearance")) {
+                Picker(L10n.tr("settings.theme"), selection: $appearanceMode) {
+                    Text(L10n.tr("settings.theme.system")).tag("system")
+                    Text(L10n.tr("settings.theme.light")).tag("light")
+                    Text(L10n.tr("settings.theme.dark")).tag("dark")
+                }
+                .onChange(of: appearanceMode) {
+                    AppDelegate.applyAppearance(appearanceMode)
+                }
+
+                Picker(L10n.tr("settings.menuBarIconStyle"), selection: $menuBarIconStyle) {
+                    Label {
+                        Text(L10n.tr("settings.menuBarIconStyle.outline"))
+                    } icon: {
+                        if let img = PasteMemoApp.menuBarIconPreview(filled: false) {
+                            Image(nsImage: img)
+                        }
+                    }
+                    .tag("outline")
+                    Label {
+                        Text(L10n.tr("settings.menuBarIconStyle.filled"))
+                    } icon: {
+                        if let img = PasteMemoApp.menuBarIconPreview(filled: true) {
+                            Image(nsImage: img)
+                        }
+                    }
+                    .tag("filled")
+                }
+
+                Picker(L10n.tr("settings.menuBar.leftClickAction"), selection: $menuBarLeftClickActionRaw) {
+                    ForEach(MenuBarLeftClickAction.allCases, id: \.rawValue) { action in
+                        Text(L10n.tr(action.l10nKey)).tag(action.rawValue)
+                    }
+                }
+                .help(L10n.tr("settings.menuBar.leftClickAction.help"))
+            }
+        }
+        .formStyle(.grouped)
+    }
+}
+
+// MARK: - Shortcuts Tab
+
+struct ShortcutsTab: View {
+    @ObservedObject private var hotkeyManager = HotkeyManager.shared
+    private var relayManager: RelayManager { RelayManager.shared }
+    @AppStorage("hotkeyKeyCode") private var hotkeyKeyCode = 0x09
+    @AppStorage("hotkeyModifiers") private var hotkeyModifiers = cmdKey | shiftKey
+    @AppStorage("managerHotkeyKeyCode") private var managerKeyCode = -1
+    @AppStorage("managerHotkeyModifiers") private var managerModifiers = -1
+    @AppStorage("managerHotkeyGlobalEnabled") private var managerHotkeyGlobalEnabled = true
+    @AppStorage("relayHotkeyKeyCode") private var relayKeyCode = -1
+    @AppStorage("relayHotkeyModifiers") private var relayModifiers = -1
+    @AppStorage("relayPasteKeyCode") private var relayPasteKeyCode = 0x09
+    @AppStorage("relayPasteModifiers") private var relayPasteModifiers = controlKey
+    @AppStorage("doubleTapEnabled") private var doubleTapEnabled = false
+    @AppStorage("doubleTapModifier") private var doubleTapModifier = 0
+
+    var body: some View {
+        Form {
+            // 按「快捷键作用的对象」分组：快捷面板 / 管理器窗口 / 接力。
+            // 每组的提示文字紧跟所属条目，避免所有行挤在一个分区里读不出归属。
+            Section(L10n.tr("settings.shortcuts.section.quickPanel")) {
+                HStack {
+                    Text(L10n.tr("settings.quickPanelShortcut"))
+                    Spacer()
+                    if hotkeyManager.isCleared {
+                        Text(L10n.tr("settings.shortcut.none"))
+                            .foregroundStyle(.tertiary)
+                            .font(.callout)
+                    }
+                    ShortcutRecorder(keyCode: $hotkeyKeyCode, modifiers: $hotkeyModifiers, onChanged: applyShortcut)
+                    ShortcutClearButton {
+                        hotkeyManager.clearShortcut()
+                        hotkeyKeyCode = -1
+                        hotkeyModifiers = -1
+                    }
+                }
+
+                // 双击修饰键走 DoubleTapDetector → toggleQuickPanel，和上面的面板快捷键
+                // 是同一个目标的两种唤起方式，所以放在同一组。
+                Toggle(L10n.tr("settings.doubleTap"), isOn: $doubleTapEnabled)
+                    .onChange(of: doubleTapEnabled) {
+                        DoubleTapDetector.shared.restart()
+                    }
+                if doubleTapEnabled {
+                    Picker(L10n.tr("settings.doubleTap.modifier"), selection: $doubleTapModifier) {
+                        ForEach(DoubleTapModifier.allCases, id: \.rawValue) { mod in
+                            Text(mod.label).tag(mod.rawValue)
+                        }
+                    }
+                    .onChange(of: doubleTapModifier) {
+                        DoubleTapDetector.shared.restart()
+                    }
+                }
+            }
+
+            Section(L10n.tr("settings.shortcuts.section.manager")) {
+                HStack {
+                    Text(L10n.tr("settings.managerShortcut"))
+                    Spacer()
+                    if hotkeyManager.isManagerCleared {
+                        Text(L10n.tr("settings.shortcut.none"))
+                            .foregroundStyle(.tertiary)
+                            .font(.callout)
+                    }
+                    HStack(spacing: 6) {
+                        Text(L10n.tr("settings.managerShortcut.global"))
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                        Toggle("", isOn: $managerHotkeyGlobalEnabled)
+                            .labelsHidden()
+                            .toggleStyle(.switch)
+                            .controlSize(.small)
+                            .fixedSize()
+                            .onChange(of: managerHotkeyGlobalEnabled) {
+                                hotkeyManager.updateManagerHotkeyGlobalEnabled(managerHotkeyGlobalEnabled)
+                            }
+                    }
+                    ShortcutRecorder(keyCode: $managerKeyCode, modifiers: $managerModifiers, onChanged: applyManagerShortcut)
+                    ShortcutClearButton {
+                        hotkeyManager.clearManagerShortcut()
+                        managerKeyCode = -1
+                        managerModifiers = -1
+                    }
+                }
+
+                Text(L10n.tr("settings.managerShortcut.scopeHint"))
+                    .font(.callout)
+                    .foregroundStyle(.tertiary)
+            }
+
+            Section(L10n.tr("settings.shortcuts.section.relay")) {
+                HStack {
+                    Text(L10n.tr("settings.relayShortcut"))
+                    Spacer()
+                    if hotkeyManager.isRelayCleared {
+                        Text(L10n.tr("settings.shortcut.none"))
+                            .foregroundStyle(.tertiary)
+                            .font(.callout)
+                    }
+                    ShortcutRecorder(keyCode: $relayKeyCode, modifiers: $relayModifiers, onChanged: applyRelayShortcut)
+                    ShortcutClearButton {
+                        hotkeyManager.clearRelayShortcut()
+                        relayKeyCode = -1
+                        relayModifiers = -1
+                    }
+                }
+
+                // 接力粘贴快捷键（接力浮窗内逐条粘贴用，默认 ⌃V）。RelayHotkeyHandler 在
+                // 每次 start() 时重读 UserDefaults，所以接力运行中不允许改，暂停/退出后生效。
+                HStack {
+                    Text(L10n.tr("relay.settings.pasteKey"))
+                    Spacer()
+                    ShortcutRecorder(keyCode: $relayPasteKeyCode, modifiers: $relayPasteModifiers)
+                        .disabled(relayManager.isActive && !relayManager.isPaused)
+                }
+                Text(relayManager.isActive && !relayManager.isPaused
+                    ? L10n.tr("relay.settings.pauseToChange")
+                    : L10n.tr("relay.settings.pasteKeyNote"))
+                    .font(.callout)
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .formStyle(.grouped)
+    }
+
+    private func applyShortcut() {
+        HotkeyManager.shared.updateShortcut(keyCode: hotkeyKeyCode, modifiers: hotkeyModifiers)
+    }
+
+    private func applyManagerShortcut() {
+        HotkeyManager.shared.updateManagerShortcut(keyCode: managerKeyCode, modifiers: managerModifiers)
+    }
+
+    private func applyRelayShortcut() {
+        HotkeyManager.shared.updateRelayShortcut(keyCode: relayKeyCode, modifiers: relayModifiers)
+    }
+}
+
+// MARK: - Quick Panel Pane
+
+struct QuickPanelPane: View {
+    @AppStorage("quickPanelAutoPaste") private var quickPanelAutoPaste = true
+    @AppStorage("addNewLineAfterPaste") private var addNewLineAfterPaste = false
+    @AppStorage(QuickPanelSettings.launchAnimationEnabledKey) private var quickPanelLaunchAnimationEnabled = true
+    @AppStorage(QuickPanelSettings.secondaryRowKey) private var quickPanelSecondaryRow = QuickPanelSecondaryRow.types.rawValue
+    @AppStorage(QuickPanelSettings.rememberLastFilterKey) private var quickPanelRememberLastFilter = false
+    @AppStorage(QuickPanelSettings.imageLayoutKey) private var quickPanelImageLayout = QuickPanelImageLayout.list.rawValue
+    @AppStorage(QuickPanelSettings.hiddenTabTypesKey) private var quickPanelHiddenTabTypes = ""
+    @AppStorage(QuickPanelSettings.tabOrderKey) private var quickPanelTabOrder = ""
+    /// 拖拽期间的临时顺序。直接绑 @AppStorage 会让每次 dropEntered 都写一遍
+    /// UserDefaults，拖一趟下来几十次写盘。
+    @State private var tabOrder: [QuickPanelTabItem] = QuickPanelSettings.resolvedTabItems(
+        from: UserDefaults.standard.string(forKey: QuickPanelSettings.tabOrderKey) ?? ""
+    )
+    @State private var draggingTab: QuickPanelTabItem?
+    @AppStorage(QuickPanelSettings.imageGridDensityKey) private var quickPanelImageGridDensity = QuickPanelImageGridDensity.medium.rawValue
+    @AppStorage(QuickPanelSettings.previewFontSizeKey) private var quickPanelPreviewFontSize = QuickPanelPreviewFontSize.defaultPoints
+    @AppStorage(QuickPanelPositionSettings.modeKey) private var quickPanelPositionMode = QuickPanelPositionMode.screenCenter.rawValue
+    @AppStorage(QuickPanelPositionSettings.screenTargetKey) private var quickPanelScreenTarget = QuickPanelScreenTarget.active.rawValue
+    @AppStorage(QuickPanelPositionSettings.specifiedScreenIDKey) private var quickPanelSpecifiedScreenID = ""
+    @AppStorage(QuickPanelSettings.presentationKey) private var quickPanelPresentation = QuickPanelPresentation.window.rawValue
+    @AppStorage(QuickPanelSettings.shelfEdgeKey) private var quickPanelShelfEdge = QuickPanelShelfEdge.auto.rawValue
+
+    private var isShelfPresentation: Bool {
+        QuickPanelPresentation(rawValue: quickPanelPresentation) == .shelf
+    }
+
+    private var screenOptions: [ScreenOption] { ScreenLocator.options() }
+    private var currentPositionMode: QuickPanelPositionMode {
+        QuickPanelPositionMode(rawValue: quickPanelPositionMode) ?? .remembered
+    }
+    private var currentScreenTarget: QuickPanelScreenTarget {
+        QuickPanelScreenTarget(rawValue: quickPanelScreenTarget) ?? .active
+    }
+
+    private var previewFontSizeSelection: Binding<Int> {
+        Binding(
+            get: { QuickPanelPreviewFontSize.resolved(quickPanelPreviewFontSize) },
+            set: { quickPanelPreviewFontSize = $0 }
+        )
+    }
+
+    var body: some View {
+        Form {
+            Section(L10n.tr("settings.display")) {
+                Picker(L10n.tr("settings.quickPanelPresentation"), selection: $quickPanelPresentation) {
+                    ForEach(QuickPanelPresentation.allCases, id: \.rawValue) { option in
+                        Text(L10n.tr(option.titleKey)).tag(option.rawValue)
+                    }
+                }
+                if isShelfPresentation {
+                    Picker(L10n.tr("settings.quickPanelShelfEdge"), selection: $quickPanelShelfEdge) {
+                        ForEach(QuickPanelShelfEdge.allCases, id: \.rawValue) { option in
+                            Text(L10n.tr(option.titleKey)).tag(option.rawValue)
+                        }
+                    }
+                }
+                Picker(L10n.tr("settings.quickPanelSecondaryRow"), selection: $quickPanelSecondaryRow) {
+                    ForEach(QuickPanelSecondaryRow.allCases, id: \.rawValue) { option in
+                        Text(L10n.tr(option.titleKey)).tag(option.rawValue)
+                    }
+                }
+                // 贴边条里图片本来就按原比例排成卡片，列表 / 瀑布流的选择对它不起作用
+                if !isShelfPresentation {
+                    Picker(L10n.tr("settings.imageLayout"), selection: $quickPanelImageLayout) {
+                        ForEach(QuickPanelImageLayout.allCases, id: \.rawValue) { option in
+                            Text(L10n.tr(option.titleKey)).tag(option.rawValue)
+                        }
+                    }
+                }
+                if !isShelfPresentation, QuickPanelImageLayout(rawValue: quickPanelImageLayout) == .grid {
+                    Picker(L10n.tr("settings.imageGridDensity"), selection: $quickPanelImageGridDensity) {
+                        ForEach(QuickPanelImageGridDensity.allCases, id: \.rawValue) { option in
+                            Text(L10n.tr(option.titleKey)).tag(option.rawValue)
+                        }
+                    }
+                }
+                Picker(L10n.tr("settings.previewFontSize"), selection: previewFontSizeSelection) {
+                    ForEach(QuickPanelPreviewFontSize.options, id: \.self) { size in
+                        Text(L10n.tr("settings.previewFontSize.points", size)).tag(size)
+                    }
+                }
+                // 贴边条的位置由「贴边条位置」决定
+                if !isShelfPresentation {
+                    HStack {
+                        Text(L10n.tr("settings.quickPanelPosition"))
+                        Spacer()
+                        Menu {
+                            positionMenuItem(
+                                title: L10n.tr(QuickPanelPositionMode.cursor.titleKey),
+                                isSelected: currentPositionMode == .cursor
+                            ) {
+                                selectQuickPanelPosition(.cursor)
+                            }
+
+                            positionMenuItem(
+                                title: L10n.tr(QuickPanelPositionMode.menuBarIcon.titleKey),
+                                isSelected: currentPositionMode == .menuBarIcon
+                            ) {
+                                selectQuickPanelPosition(.menuBarIcon)
+                            }
+
+                            positionMenuItem(
+                                title: L10n.tr(QuickPanelPositionMode.windowCenter.titleKey),
+                                isSelected: currentPositionMode == .windowCenter
+                            ) {
+                                selectQuickPanelPosition(.windowCenter)
+                            }
+
+                            Menu(L10n.tr(QuickPanelPositionMode.screenCenter.titleKey)) {
+                                positionMenuItem(
+                                    title: L10n.tr("settings.quickPanelTargetScreen.active"),
+                                    isSelected: currentPositionMode == .screenCenter && currentScreenTarget == .active
+                                ) {
+                                    selectQuickPanelPosition(.screenCenter, screenTarget: .active)
+                                }
+
+                                ForEach(screenOptions) { screen in
+                                    positionMenuItem(
+                                        title: screen.name,
+                                        isSelected: currentPositionMode == .screenCenter
+                                            && currentScreenTarget == .specified
+                                            && quickPanelSpecifiedScreenID == screen.id
+                                    ) {
+                                        selectQuickPanelPosition(.screenCenter, screenTarget: .specified, screenID: screen.id)
+                                    }
+                                }
+                            }
+
+                            positionMenuItem(
+                                title: L10n.tr(QuickPanelPositionMode.remembered.titleKey),
+                                isSelected: currentPositionMode == .remembered
+                            ) {
+                                selectQuickPanelPosition(.remembered)
+                            }
+                        } label: {
+                            Text(currentPositionTitle)
+                                .foregroundStyle(.primary)
+                        }
+                        .menuStyle(.borderlessButton)
+                        .fixedSize()
+                    }
+                }
+
+            }
+
+            // 独立 Section 而不是 DisclosureGroup：后者把十几个 Toggle 挤成一坨、
+            // 行高和缩进都跟其它设置项对不齐。Section 的 header/footer 是 Form 的
+            // 标准结构，跟这一页其它分节自然一致。
+            Section {
+                // 置顶固定第一位、不参与排序：它是「哪些条目」而不是「哪一类内容」，
+                // 和下面按内容类型分的标签不是一回事。只留开关，允许整项关掉。
+                pinnedTabRow
+                ForEach(tabOrder) { item in
+                    tabItemRow(item)
+                }
+            } header: {
+                HStack {
+                    Text(L10n.tr("settings.quickPanelTabTypes"))
+                    Spacer()
+                    if tabOrder.map(\.storageID) != QuickPanelSettings.defaultTabOrderIDs {
+                        Button(L10n.tr("settings.quickPanelTabTypes.reset")) {
+                            tabOrder = QuickPanelSettings.resolvedTabItems(from: "")
+                        }
+                        .buttonStyle(.link)
+                        .font(.system(size: 11))
+                    }
+                }
+            } footer: {
+                Text(L10n.tr("settings.quickPanelTabTypes.hint"))
+            }
+
+            Section(L10n.tr("settings.behavior")) {
+                Toggle(L10n.tr("settings.autoPaste"), isOn: $quickPanelAutoPaste)
+                Toggle(L10n.tr("settings.addNewLine"), isOn: $addNewLineAfterPaste)
+                Toggle(L10n.tr("settings.quickPanelLaunchAnimation"), isOn: $quickPanelLaunchAnimationEnabled)
+                Toggle(L10n.tr("settings.quickPanelRememberFilter"), isOn: $quickPanelRememberLastFilter)
+            }
+        }
+        .formStyle(.grouped)
+        .onAppear {
+            ensureSpecifiedScreenSelection()
+            tabOrder = QuickPanelSettings.resolvedTabItems(from: quickPanelTabOrder)
+        }
+        // 落盘挂在顺序变化上，不挂 performDrop：松手位置只要没落在某一行上
+        // （行间缝隙、Section 边距），那个回调就不触发，顺序会只改了内存没进 defaults。
+        .onChange(of: tabOrder) { _, newValue in
+            let encoded = newValue.map(\.storageID).joined(separator: ",")
+            if encoded != quickPanelTabOrder { quickPanelTabOrder = encoded }
+        }
+        .onChange(of: quickPanelPositionMode) {
+            ensureSpecifiedScreenSelection()
+        }
+        .onChange(of: quickPanelScreenTarget) {
+            ensureSpecifiedScreenSelection()
+        }
+    }
+
+    private func ensureSpecifiedScreenSelection() {
+        guard currentScreenTarget == .specified else { return }
+        guard ScreenLocator.screen(for: quickPanelSpecifiedScreenID) == nil else { return }
+        quickPanelSpecifiedScreenID = screenOptions.first?.id ?? ""
+    }
+
+    private var currentPositionTitle: String {
+        switch currentPositionMode {
+        case .remembered:
+            return L10n.tr(QuickPanelPositionMode.remembered.titleKey)
+        case .cursor:
+            return L10n.tr(QuickPanelPositionMode.cursor.titleKey)
+        case .menuBarIcon:
+            return L10n.tr(QuickPanelPositionMode.menuBarIcon.titleKey)
+        case .windowCenter:
+            return L10n.tr(QuickPanelPositionMode.windowCenter.titleKey)
+        case .screenCenter:
+            switch currentScreenTarget {
+            case .active:
+                return "\(L10n.tr(QuickPanelPositionMode.screenCenter.titleKey)) (\(L10n.tr("settings.quickPanelTargetScreen.active")))"
+            case .specified:
+                let screenName = screenOptions.first(where: { $0.id == quickPanelSpecifiedScreenID })?.name
+                    ?? L10n.tr("settings.quickPanelSpecifiedScreen")
+                return "\(L10n.tr(QuickPanelPositionMode.screenCenter.titleKey)) (\(screenName))"
+            }
+        }
+    }
+
+    /// 存的是「隐藏集合」而不是「显示集合」：这样新增内容类型时默认可见，
+    /// 老用户的配置不会把它挡在外面（同 typeOrder 里 missing 自动追加的取舍）。
+    /// 不用 `Label`：SF Symbols 宽窄不一（`</>` 比 `pin` 宽一截），Label 不钉图标宽度，
+    /// 一列下来文字左边缘参差。自己给图标一个固定宽度再排文字。
+    private func tabItemLabel(_ item: QuickPanelTabItem) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: item.icon)
+                .frame(width: 18, alignment: .center)
+                .foregroundStyle(.secondary)
+            Text(item.label)
+        }
+    }
+
+    private var pinnedTabRow: some View {
+        HStack(spacing: 10) {
+            // 占住和可拖行同宽的位置，标题才对得齐
+            Color.clear.frame(width: 14, height: 1)
+            tabItemLabel(.pinned)
+            Spacer(minLength: 0)
+            Toggle("", isOn: tabItemVisibleBinding(.pinned))
+                .labelsHidden()
+                .toggleStyle(.switch)
+                .controlSize(.small)
+        }
+        .padding(.vertical, 2)
+    }
+
+    @ViewBuilder
+    private func tabItemRow(_ item: QuickPanelTabItem) -> some View {
+        HStack(spacing: 10) {
+            // 把手只是提示「这行能拖」，整行都是拖拽源——只让 6pt 宽的图标可拖太难点中
+            Image(systemName: "line.3.horizontal")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.tertiary)
+                .frame(width: 14)
+            tabItemLabel(item)
+            Spacer(minLength: 0)
+            Toggle("", isOn: tabItemVisibleBinding(item))
+                .labelsHidden()
+                .toggleStyle(.switch)
+                .controlSize(.small)
+        }
+        .padding(.vertical, 2)
+        .contentShape(Rectangle())
+        .onDrag {
+            draggingTab = item
+            return NSItemProvider(object: item.storageID as NSString)
+        }
+        .onDrop(of: [.text], delegate: TabItemDropDelegate(
+            target: item,
+            dragging: $draggingTab,
+            items: $tabOrder
+        ))
+        .pointerCursor()
+    }
+
+    /// 存的是「隐藏集合」而不是「显示集合」：这样新增分类时默认可见，
+    /// 老用户的配置不会把它挡在外面（同 typeOrder 里 missing 自动追加的取舍）。
+    private func tabItemVisibleBinding(_ item: QuickPanelTabItem) -> Binding<Bool> {
+        Binding(
+            get: {
+                !QuickPanelSettings.hiddenTabIDs(from: quickPanelHiddenTabTypes).contains(item.storageID)
+            },
+            set: { visible in
+                var hidden = QuickPanelSettings.hiddenTabIDs(from: quickPanelHiddenTabTypes)
+                if visible {
+                    hidden.remove(item.storageID)
+                } else {
+                    hidden.insert(item.storageID)
+                }
+                // 按默认顺序落盘，便于人肉核对 defaults
+                quickPanelHiddenTabTypes = QuickPanelSettings.defaultTabOrderIDs
+                    .filter { hidden.contains($0) }
+                    .joined(separator: ",")
+            }
+        )
+    }
+
+    @ViewBuilder
+    private func positionMenuItem(title: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            if isSelected {
+                Label(title, systemImage: "checkmark")
+            } else {
+                Text(title)
+            }
+        }
+    }
+
+    private func selectQuickPanelPosition(
+        _ mode: QuickPanelPositionMode,
+        screenTarget: QuickPanelScreenTarget = .active,
+        screenID: String? = nil
+    ) {
+        quickPanelPositionMode = mode.rawValue
+
+        if mode == .screenCenter {
+            quickPanelScreenTarget = screenTarget.rawValue
+            if screenTarget == .specified {
+                quickPanelSpecifiedScreenID = screenID ?? screenOptions.first?.id ?? ""
+            }
+        }
+    }
+}
+
+/// 拖拽重排：只动内存里的顺序，落盘交给外层对 `items` 的 onChange——
+/// 松手不一定落在某一行上，`performDrop` 未必会触发。
+private struct TabItemDropDelegate: DropDelegate {
+    let target: QuickPanelTabItem
+    @Binding var dragging: QuickPanelTabItem?
+    @Binding var items: [QuickPanelTabItem]
+
+    func dropEntered(info: DropInfo) {
+        guard let source = dragging, source != target,
+              let from = items.firstIndex(of: source),
+              let to = items.firstIndex(of: target)
+        else { return }
+        withAnimation(.easeInOut(duration: 0.18)) {
+            items.move(fromOffsets: IndexSet(integer: from), toOffset: to > from ? to + 1 : to)
+        }
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        DropProposal(operation: .move)
+    }
+
+    func validateDrop(info: DropInfo) -> Bool { dragging != nil }
+
+    func performDrop(info: DropInfo) -> Bool {
+        dragging = nil
+        return true
+    }
+}
+
+// MARK: - Preview Pane
+
+struct PreviewPane: View {
+    @AppStorage("showLinkURL") private var showLinkURL = false
+    @AppStorage("webPreviewEnabled") private var webPreviewEnabled = true
+    @AppStorage("imageLinkPreviewEnabled") private var imageLinkPreviewEnabled = true
+    @AppStorage("previewExecutesJavaScript") private var previewExecutesJavaScript = true
+    @AppStorage("richTextPreviewEnabled") private var richTextPreviewEnabled = true
+    @AppStorage("offlineModeEnabled") private var offlineModeEnabled = false
+
+    var body: some View {
+        Form {
+            Section {
+                Toggle(L10n.tr("settings.showLinkURL"), isOn: $showLinkURL)
+                Toggle(L10n.tr("settings.webPreview"), isOn: $webPreviewEnabled)
+                // 「预览时执行网页脚本」依赖「网页预览」开启,两者有联动,紧挨着放。
+                Toggle(L10n.tr("settings.previewExecutesJavaScript"), isOn: $previewExecutesJavaScript)
+                    .disabled(!webPreviewEnabled || offlineModeEnabled)
+                Toggle(L10n.tr("settings.imageLinkPreview"), isOn: $imageLinkPreviewEnabled)
+                Toggle(L10n.tr("settings.richTextPreview"), isOn: $richTextPreviewEnabled)
+            } header: {
+                Text(L10n.tr("settings.linkPreview"))
+            } footer: {
+                Text(L10n.tr(offlineModeEnabled ? "settings.linkPreview.footer.offline" : "settings.linkPreview.footer"))
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+            .disabled(offlineModeEnabled)
+
+            OCRSection()
+
+            SMSCodeSection()
+        }
+        .formStyle(.grouped)
+    }
+}
+
+/// 「存储空间」页的自动清理：保留时长。
+struct HistorySection: View {
+    @Environment(\.modelContext) private var modelContext
+    @EnvironmentObject private var storage: StorageModel
+    @AppStorage("retentionDays") private var retentionDays = 90
+    @State private var pendingRetentionOldDays = 0
+    @State private var pendingExpiredCount = 0
+    @State private var showRetentionCleanConfirm = false
+
+    private let allRetentionOptions = [1, 3, 7, 14, 30, 60, 90, 180, 365]
+
+    var body: some View {
+        Section(L10n.tr("storage.autoClean")) {
+            Picker(L10n.tr("settings.retentionDays"), selection: $retentionDays) {
+                Text(L10n.tr("settings.retentionDays.forever")).tag(0)
+                ForEach(allRetentionOptions, id: \.self) { days in
+                    Text(L10n.tr("settings.retentionDays.days", days)).tag(days)
+                }
+            }
+            .onChange(of: retentionDays) { oldValue, newValue in
+                prepareRetentionCleanup(oldDays: oldValue, newDays: newValue)
+            }
+        }
+        .alert(
+            L10n.tr("settings.retentionDays.cleanConfirm", pendingExpiredCount),
+            isPresented: $showRetentionCleanConfirm
+        ) {
+            Button(L10n.tr("action.delete"), role: .destructive) {
+                // Defer deletion to next run loop iteration — the alert sheet close
+                // animation triggers a layout pass that would access zombie SwiftData objects
+                DispatchQueue.main.async {
+                    executeRetentionCleanup()
+                }
+            }
+            Button(L10n.tr("action.cancel"), role: .cancel) {
+                retentionDays = pendingRetentionOldDays
+            }
+        } message: {
+            Text(L10n.tr("settings.retentionDays.cleanWarning"))
+        }
+    }
+
+    private func prepareRetentionCleanup(oldDays: Int, newDays: Int) {
+        guard newDays > 0, (oldDays == 0 || newDays < oldDays) else { return }
+
+        let cutoff = Calendar.current.date(byAdding: .day, value: -newDays, to: Date())!
+        let descriptor = FetchDescriptor<ClipItem>()
+        guard let allItems = try? modelContext.fetch(descriptor) else { return }
+        let preservedGroupNames = SmartGroupRetention.preservedGroupNames(in: modelContext)
+        let count = allItems.filter {
+            $0.createdAt < cutoff
+                && !$0.isPinned
+                && !SmartGroupRetention.shouldPreserve(item: $0, preservedGroupNames: preservedGroupNames)
+        }.count
+        guard count > 0 else { return }
+
+        pendingRetentionOldDays = oldDays
+        pendingExpiredCount = count
+        showRetentionCleanConfirm = true
+    }
+
+    private func executeRetentionCleanup() {
+        let cutoff = Calendar.current.date(byAdding: .day, value: -retentionDays, to: Date())!
+        let descriptor = FetchDescriptor<ClipItem>()
+        guard let allItems = try? modelContext.fetch(descriptor) else { return }
+        let preservedGroupNames = SmartGroupRetention.preservedGroupNames(in: modelContext)
+        let expiredItems = allItems.filter {
+            $0.createdAt < cutoff
+                && !$0.isPinned
+                && !SmartGroupRetention.shouldPreserve(item: $0, preservedGroupNames: preservedGroupNames)
+        }
+        guard !expiredItems.isEmpty else { return }
+        // Through StorageCleaner so cached originals and freed database pages go too, and the
+        // page's totals reflect it. Group counts are recalculated by the delete itself.
+        Task {
+            await StorageCleaner.delete(expiredItems, in: modelContext)
+            await storage.refresh()
+        }
+    }
+}
+
+struct OCRSection: View {
+    @AppStorage(OCRTaskCoordinator.enableOCRKey) private var ocrEnabled = false
+    @AppStorage(OCRTaskCoordinator.autoOCRKey) private var autoProcess = true
+    @AppStorage(OCRTaskCoordinator.markdownKey) private var ocrMarkdown = true
+    @ObservedObject private var coordinator = OCRTaskCoordinator.shared
+
+    var body: some View {
+        Section(L10n.tr("settings.ocr")) {
+            Toggle(L10n.tr("settings.ocr.enable"), isOn: $ocrEnabled)
+
+            // Layout-aware Markdown OCR relies on RecognizeDocumentsRequest,
+            // which only exists on macOS 26+. Hide the control on older
+            // systems where it has no effect (the engine uses plain text).
+            // Kept outside `if ocrEnabled`: it also governs the on-demand
+            // "Paste OCR Text" path, which works with background OCR off.
+            if #available(macOS 26.0, *) {
+                Toggle(L10n.tr("settings.ocr.markdown"), isOn: $ocrMarkdown)
+                Text(L10n.tr("settings.ocr.markdown.hint"))
+                    .font(.callout)
+                    .foregroundStyle(.tertiary)
+            }
+
+            if ocrEnabled {
+                // 启用后给一句内存提示：OCR 后台跑 Vision 会增加内存占用。
+                Text(L10n.tr("settings.ocr.memoryHint"))
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                Toggle(L10n.tr("settings.ocr.auto"), isOn: $autoProcess)
+
+                if coordinator.isScanning {
+                    VStack(alignment: .leading, spacing: 6) {
+                        ProgressView(value: Double(coordinator.scanCompleted), total: Double(max(coordinator.scanTotal, 1)))
+                        HStack {
+                            Text("\(coordinator.scanCompleted) / \(coordinator.scanTotal)")
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                            Button(L10n.tr("settings.ocr.stopScan")) {
+                                OCRTaskCoordinator.shared.cancelScan()
+                            }
+                            .pointerCursor()
+                        }
+                    }
+                } else {
+                    Button(L10n.tr("settings.ocr.scanExisting")) {
+                        OCRTaskCoordinator.shared.scanExistingImages()
+                    }
+                    .pointerCursor()
+                }
+
+                Text(L10n.tr("settings.ocr.hint"))
+                    .font(.callout)
+                    .foregroundStyle(.tertiary)
+            }
+        }
+    }
+}
+
+// MARK: - Privacy Tab
+
+struct PrivacyTab: View {
+    @AppStorage("sensitiveDetectionEnabled") private var isSensitiveDetectionEnabled = true
+    @AppStorage(UsageTracker.ANALYTICS_ENABLED_KEY) private var analyticsEnabled = true
+    @AppStorage("offlineModeEnabled") private var offlineModeEnabled = false
+
+    var body: some View {
+        Form {
+            Section {
+                Toggle(L10n.tr("settings.privacy.offlineMode"), isOn: $offlineModeEnabled)
+                Text(L10n.tr("settings.privacy.offlineMode.hint"))
+                    .font(.callout)
+                    .foregroundStyle(.tertiary)
+            }
+
+            Section(L10n.tr("settings.privacy.sensitive")) {
+                Toggle(L10n.tr("settings.privacy.sensitiveDetection"), isOn: $isSensitiveDetectionEnabled)
+                Text(L10n.tr("settings.privacy.sensitiveHint"))
+                    .font(.callout)
+                    .foregroundStyle(.tertiary)
+                SensitiveRetentionRow()
+            }
+
+            IgnoredAppsSection()
+
+            Section(L10n.tr("settings.privacy.analytics")) {
+                Toggle(L10n.tr("settings.privacy.analyticsToggle"), isOn: $analyticsEnabled)
+                    .disabled(offlineModeEnabled)
+                Text(L10n.tr("settings.privacy.analyticsHint"))
+                    .font(.callout)
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .formStyle(.grouped)
+    }
+}
+
+/// How long sensitive clips are kept. Bound to a local copy, not `@AppStorage`: a
+/// shorter limit is only written once the user confirms deleting what it expires —
+/// the sweep runs as soon as the value lands.
+private struct SensitiveRetentionRow: View {
+    @Environment(\.modelContext) private var modelContext
+    @State private var selection = SensitiveRetention.minutes
+    @State private var pendingMinutes: Int?
+    @State private var pendingCount = 0
+
+    var body: some View {
+        Picker(L10n.tr("settings.privacy.sensitiveRetention"), selection: Binding(
+            get: { selection },
+            set: { choose($0) }
+        )) {
+            ForEach(SensitiveRetention.OPTIONS, id: \.self) { minutes in
+                Text(Self.label(minutes)).tag(minutes)
+            }
+        }
+        .alert(
+            L10n.tr("settings.privacy.sensitiveRetention.cleanConfirm", pendingCount),
+            isPresented: Binding(get: { pendingMinutes != nil }, set: { if !$0 { pendingMinutes = nil } })
+        ) {
+            Button(L10n.tr("action.delete"), role: .destructive) {
+                let minutes = pendingMinutes
+                pendingMinutes = nil
+                // After the alert has closed — same reason as the history retention
+                // cleanup: its close animation touches the rows being deleted.
+                DispatchQueue.main.async { if let minutes { commit(minutes) } }
+            }
+            Button(L10n.tr("action.cancel"), role: .cancel) { pendingMinutes = nil }
+        } message: {
+            Text(L10n.tr("settings.retentionDays.cleanWarning"))
+        }
+        Text(L10n.tr("settings.privacy.sensitiveRetention.hint"))
+            .font(.callout)
+            .foregroundStyle(.tertiary)
+    }
+
+    private func choose(_ minutes: Int) {
+        if let cutoff = SensitiveRetention.cutoff(minutes: minutes) {
+            let count = SensitiveRetention.expiredItems(in: modelContext, cutoff: cutoff).count
+            if count > 0 {
+                pendingCount = count
+                pendingMinutes = minutes
+                return
+            }
+        }
+        commit(minutes)
+    }
+
+    private func commit(_ minutes: Int) {
+        selection = minutes
+        UserDefaults.standard.set(minutes, forKey: SensitiveRetention.MINUTES_KEY)
+        ClipboardManager.shared.updateSensitiveSweep()
+        ClipboardManager.shared.sweepSensitiveNow()
+    }
+
+    private static func label(_ minutes: Int) -> String {
+        switch minutes {
+        case 0: return L10n.tr("settings.privacy.sensitiveRetention.followHistory")
+        case ..<60: return L10n.tr("settings.privacy.sensitiveRetention.minutes", minutes)
+        case ..<1440: return L10n.tr("settings.privacy.sensitiveRetention.hours", minutes / 60)
+        default: return L10n.tr("settings.retentionDays.days", minutes / 1440)
+        }
+    }
+}
+
+// MARK: - Automation Tab
+
+struct AutomationTab: View {
+    @AppStorage("automationEnabled") private var automationEnabled = true
+    @Environment(\.modelContext) private var modelContext
+    @Query(sort: \AutomationRule.sortOrder) private var rules: [AutomationRule]
+    private var enabledCount: Int { rules.filter(\.enabled).count }
+
+    var body: some View {
+        Form {
+            automationContent
+        }
+        .formStyle(.grouped)
+    }
+
+    private var automationContent: some View {
+        Group {
+            Section {
+                Toggle(L10n.tr("settings.automation.enabled"), isOn: $automationEnabled)
+            }
+
+            Section(L10n.tr("settings.automation.ruleCount", rules.count, enabledCount)) {
+                ForEach(rules) { rule in
+                    Toggle(isOn: Binding(
+                        get: { rule.enabled },
+                        set: { rule.enabled = $0; try? modelContext.save() }
+                    )) {
+                        HStack {
+                            Text(rule.isBuiltIn ? L10n.tr(rule.name) : rule.name)
+                            Spacer()
+                            Text(rule.triggerMode == .automatic
+                                ? L10n.tr("settings.automation.auto")
+                                : L10n.tr("settings.automation.manual"))
+                                .font(.caption)
+                                .foregroundStyle(.tertiary)
+                        }
+                    }
+                }
+            }
+
+            Section {
+                Button(L10n.tr("settings.automation.manage")) {
+                    AutomationManagerWindow.show()
+                }
+                .pointerCursor()
+
+                Text(L10n.tr("settings.automation.hint"))
+                    .font(.callout)
+                    .foregroundStyle(.tertiary)
+            }
+        }
+    }
+
+}
+
+// MARK: - Pro Tab
+
+struct SponsorTab: View {
+    var body: some View {
+        Form {
+            Section {
+                VStack(spacing: 12) {
+                    Image(systemName: "heart.circle.fill")
+                        .font(.system(size: 40))
+                        .foregroundStyle(.pink)
+
+                    Text(L10n.tr("sponsor.title"))
+                        .font(.headline)
+
+                    Text(L10n.tr("sponsor.desc"))
+                        .foregroundStyle(.secondary)
+                        .font(.callout)
+                        .multilineTextAlignment(.center)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 8)
+            }
+
+            Section {
+                Link(destination: URL(string: "https://www.lifedever.com")!) {
+                    Label(L10n.tr("sponsor.donate"), systemImage: "cup.and.saucer")
+                }
+                Link(destination: URL(string: "https://github.com/lifedever/PasteMemo-app")!) {
+                    Label(L10n.tr("sponsor.star"), systemImage: "star")
+                }
+                Link(destination: URL(string: "https://github.com/lifedever/PasteMemo-app/issues")!) {
+                    Label(L10n.tr("sponsor.feedback"), systemImage: "bubble.left")
+                }
+            }
+        }
+        .formStyle(.grouped)
+    }
+}
+
+// MARK: - About Tab
+
+struct AboutTab: View {
+    @ObservedObject private var updateChecker = UpdateChecker.shared
+    @AppStorage("autoCheckUpdates") private var autoCheckUpdates = true
+    @AppStorage("updateCheckInterval") private var updateCheckInterval = 24
+    @AppStorage("includeBetaChannel") private var includeBetaChannel = false
+
+    var body: some View {
+        Form {
+            Section {
+                VStack(spacing: 12) {
+                    if let icon = NSApp.applicationIconImage {
+                        Image(nsImage: icon)
+                            .resizable()
+                            .frame(width: 64, height: 64)
+                    }
+                    Text("PasteMemo")
+                        .font(.title2.bold())
+                    Text(L10n.tr("about.description"))
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 8)
+            }
+
+            Section {
+                HStack {
+                    Text(L10n.tr("settings.currentVersion"))
+                    Spacer()
+                    Text(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "—")
+                        .foregroundStyle(.secondary)
+                }
+                Button(L10n.tr("menu.checkForUpdates")) {
+                    Task { await updateChecker.checkForUpdates(userInitiated: true) }
+                }
+                .disabled(updateChecker.isChecking)
+                Toggle(L10n.tr("settings.autoCheckUpdates"), isOn: $autoCheckUpdates)
+                    .onChange(of: autoCheckUpdates) {
+                        if autoCheckUpdates {
+                            updateChecker.startPeriodicChecks()
+                        } else {
+                            updateChecker.stopPeriodicChecks()
+                        }
+                    }
+                if autoCheckUpdates {
+                    Picker(L10n.tr("settings.updateCheckInterval"), selection: $updateCheckInterval) {
+                        Text(L10n.tr("settings.updateCheckInterval.6h")).tag(6)
+                        Text(L10n.tr("settings.updateCheckInterval.12h")).tag(12)
+                        Text(L10n.tr("settings.updateCheckInterval.24h")).tag(24)
+                        Text(L10n.tr("settings.updateCheckInterval.72h")).tag(72)
+                    }
+                    .onChange(of: updateCheckInterval) {
+                        updateChecker.startPeriodicChecks()
+                    }
+                }
+                VStack(alignment: .leading, spacing: 4) {
+                    Toggle(L10n.tr("settings.includeBetaChannel"), isOn: $includeBetaChannel)
+                        .onChange(of: includeBetaChannel) {
+                            // Switching channels should give immediate feedback —
+                            // wait-for-next-poll feels broken. Treat as a user-
+                            // initiated check so dev builds also run it.
+                            Task { await updateChecker.checkForUpdates(userInitiated: true) }
+                        }
+                    Text(L10n.tr("settings.includeBetaChannel.hint"))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            Section {
+                Link(L10n.tr("about.website"), destination: URL(string: "https://www.lifedever.com/PasteMemo/")!)
+                Link(L10n.tr("about.help"), destination: URL(string: "https://www.lifedever.com/PasteMemo/help/")!)
+                Link(L10n.tr("menu.reportIssue"), destination: URL(string: "https://github.com/lifedever/PasteMemo-app/issues")!)
+            }
+
+            Section {
+                HStack {
+                    Text(L10n.tr("about.license"))
+                    Spacer()
+                    Text("GPL-3.0")
+                        .foregroundStyle(.secondary)
+                }
+                Link(L10n.tr("about.sourceCode"), destination: URL(string: "https://github.com/lifedever/PasteMemo-app")!)
+            }
+
+            Section {
+                Text("© 2026 lifedever.")
+                    .foregroundStyle(.tertiary)
+                    .font(.caption)
+                    .frame(maxWidth: .infinity, alignment: .center)
+            }
+        }
+        .formStyle(.grouped)
+    }
+}

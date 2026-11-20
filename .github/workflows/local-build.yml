@@ -1,0 +1,29 @@
+name: Local unsigned package
+
+# Builds an unsigned DMG from this fork via the project's own package.sh.
+# No signing secrets needed; the DMG requires Gatekeeper bypass on install
+# (xattr -cr /Applications/PasteMemo.app), same as the official unsigned flow.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: macos-26
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Package DMG
+        env:
+          VERSION: "0.0.${{ github.run_number }}"
+        run: bash scripts/package.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PasteMemo-dmg-${{ github.run_number }}
+          path: dist/*.dmg
+          if-no-files-found: error

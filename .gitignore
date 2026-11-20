@@ -1,0 +1,12 @@
+.build/
+.dev-build/
+.release/
+dist/
+.swiftpm/
+*.xcodeproj
+*.xcworkspace
+DerivedData/
+.DS_Store
+
+.superpowers/
+.worktrees/
