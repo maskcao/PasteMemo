@@ -17,14 +17,17 @@ struct ScreenshotFlatView: View {
     }
 }
 
-/// 只画标注层的 Canvas（预览与扁平化共用）。
+/// 只画标注层的 Canvas（预览与扁平化共用）。displayScale = 预览显示比例，
+/// 扁平化渲染传 1（画布尺寸即图片尺寸）。
 struct AnnotationCanvasView: View {
     let annotations: [ScreenshotAnnotation]
     let inProgress: ScreenshotAnnotation?
     let imageWidth: CGFloat
+    var displayScale: CGFloat = 1
 
     var body: some View {
         Canvas { context, _ in
+            context.scaleBy(x: displayScale, y: displayScale)
             AnnotationRenderer.draw(&context, annotations: annotations, inProgress: inProgress, imageWidth: imageWidth)
         }
     }
@@ -63,7 +66,8 @@ struct ScreenshotEditorView: View {
     private var canvas: some View {
         GeometryReader { proxy in
             if isImageValid {
-                let scale = min(proxy.size.width / imgW, proxy.size.height / imgH)
+                // 封顶 1：小图不放大，保持原始清晰度
+                let scale = min(1, proxy.size.width / imgW, proxy.size.height / imgH)
                 ZStack {
                     Image(nsImage: image)
                         .resizable()
@@ -71,7 +75,8 @@ struct ScreenshotEditorView: View {
                     AnnotationCanvasView(
                         annotations: viewModel.annotations,
                         inProgress: viewModel.inProgress,
-                        imageWidth: imgW
+                        imageWidth: imgW,
+                        displayScale: scale
                     )
                     .allowsHitTesting(false)
                     if let draft = viewModel.textDraft {
@@ -101,7 +106,8 @@ struct ScreenshotEditorView: View {
                 viewModel.dragMoved(at: imagePoint(from: value.location, scale: scale))
             }
             .onEnded { value in
-                viewModel.dragEnded(at: imagePoint(from: value.location, scale: scale))
+                // 阈值用视图像素（8px），换算回图片坐标
+                viewModel.dragEnded(at: imagePoint(from: value.location, scale: scale), tapThreshold: 8 / scale)
             }
     }
 
@@ -180,13 +186,19 @@ struct ScreenshotEditorView: View {
                 .foregroundStyle(.tertiary)
             Spacer()
             Button(L10n.tr("action.cancel")) {
-                onClose()
+                // Esc（.cancelAction）在文字输入中先只取消文字，再按一次才关窗口
+                if viewModel.textDraft != nil {
+                    viewModel.cancelText()
+                } else {
+                    onClose()
+                }
             }
             .keyboardShortcut(.cancelAction)
             Button(L10n.tr("editor.screenshot.saveCopy")) {
                 save()
             }
-            .keyboardShortcut(.defaultAction)
+            // ⌘↩ 而不是裸 Return：避免文字输入按回车时误触保存
+            .keyboardShortcut(.return, modifiers: .command)
         }
     }
 

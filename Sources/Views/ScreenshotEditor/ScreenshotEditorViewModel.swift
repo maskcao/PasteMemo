@@ -60,7 +60,7 @@ final class ScreenshotEditorViewModel {
         }
     }
 
-    func dragEnded(at point: CGPoint) {
+    func dragEnded(at point: CGPoint, tapThreshold: CGFloat = 8) {
         defer {
             dragStart = nil
             inProgress = nil
@@ -70,7 +70,7 @@ final class ScreenshotEditorViewModel {
 
         switch tool {
         case .arrow, .rectangle:
-            guard travel > 8 else { return }
+            guard travel > tapThreshold else { return }
             commit(ScreenshotAnnotation(
                 kind: tool == .arrow ? .arrow : .rectangle,
                 colorIndex: colorIndex, weightIndex: weightIndex,
@@ -81,7 +81,7 @@ final class ScreenshotEditorViewModel {
                 kind: .mosaic, colorIndex: colorIndex, weightIndex: weightIndex,
                 start: start, end: point
             ).rect
-            guard region.width >= 8, region.height >= 8,
+            guard region.width >= tapThreshold, region.height >= tapThreshold,
                   let mosaic = Self.makeMosaicImage(of: image, rect: region) else { return }
             commit(ScreenshotAnnotation(
                 kind: .mosaic, colorIndex: colorIndex, weightIndex: weightIndex,
@@ -181,17 +181,25 @@ final class ScreenshotEditorViewModel {
         let smallW = max(1, Int(pixelRect.width / block))
         let smallH = max(1, Int(pixelRect.height / block))
 
-        let small = NSImage(size: NSSize(width: smallW, height: smallH))
-        small.lockFocus()
-        NSGraphicsContext.current?.imageInterpolation = .none
-        NSGraphicsContext.current?.cgContext.draw(cropped, in: NSRect(x: 0, y: 0, width: smallW, height: smallH))
-        small.unlockFocus()
+        guard let smallContext = makeBitmapContext(width: smallW, height: smallH),
+              let outputContext = makeBitmapContext(width: Int(pixelRect.width), height: Int(pixelRect.height)) else { return nil }
+        // 缩小用平均插值（真正的像素化，不残留单点采样），放大用无插值出硬边块；
+        // CGContext.draw 自带的翻转在两步里正好抵消
+        smallContext.interpolationQuality = .high
+        smallContext.draw(cropped, in: CGRect(x: 0, y: 0, width: smallW, height: smallH))
+        guard let smallImage = smallContext.makeImage() else { return nil }
+        outputContext.interpolationQuality = .none
+        outputContext.draw(smallImage, in: CGRect(x: 0, y: 0, width: pixelRect.width, height: pixelRect.height))
+        guard let outputImage = outputContext.makeImage() else { return nil }
+        return NSImage(cgImage: outputImage, size: NSSize(width: pixelRect.width, height: pixelRect.height))
+    }
 
-        let output = NSImage(size: NSSize(width: pixelRect.width, height: pixelRect.height))
-        output.lockFocus()
-        NSGraphicsContext.current?.imageInterpolation = .none
-        small.draw(in: NSRect(origin: .zero, size: output.size))
-        output.unlockFocus()
-        return output
+    private static func makeBitmapContext(width: Int, height: Int) -> CGContext? {
+        CGContext(
+            data: nil, width: width, height: height,
+            bitsPerComponent: 8, bytesPerRow: 0,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        )
     }
 }
