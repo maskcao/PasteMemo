@@ -1,8 +1,11 @@
-name: Local unsigned package
+name: Local package
 
-# Builds an unsigned DMG from this fork via the project's own package.sh.
-# No signing secrets needed; the DMG requires Gatekeeper bypass on install
-# (xattr -cr /Applications/PasteMemo.app), same as the official unsigned flow.
+# Builds the DMG via the project's own package.sh, signed with a stable
+# self-signed identity ("PasteMemo Local Signing", imported from repo
+# secrets). A stable identity keeps macOS TCC grants (Screen Recording,
+# Accessibility) valid across rebuilds; ad-hoc signatures break them on
+# every install. Gatekeeper bypass on install is still required
+# (xattr -cr /Applications/PasteMemo.app).
 
 on:
   workflow_dispatch:
@@ -17,15 +20,30 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Import signing certificate
+        env:
+          P12_BASE64: ${{ secrets.PASTEMEMO_SIGNING_P12 }}
+          P12_PASSWORD: ${{ secrets.PASTEMEMO_SIGNING_P12_PASSWORD }}
+        run: |
+          echo "$P12_BASE64" | base64 --decode > /tmp/pastememo-signing.p12
+          openssl pkcs12 -in /tmp/pastememo-signing.p12 -passin "pass:$P12_PASSWORD" -nodes -nokeys -out /tmp/signing-cert.pem
+          openssl pkcs12 -in /tmp/pastememo-signing.p12 -passin "pass:$P12_PASSWORD" -nodes -nocerts -out /tmp/signing-key.pem
+          security import /tmp/signing-cert.pem -k "$HOME/Library/Keychains/login.keychain-db"
+          security import /tmp/signing-key.pem -k "$HOME/Library/Keychains/login.keychain-db" -T /usr/bin/codesign
+          security add-trusted-cert -r trustRoot -k "$HOME/Library/Keychains/login.keychain-db" /tmp/signing-cert.pem
+          rm -f /tmp/pastememo-signing.p12 /tmp/signing-cert.pem /tmp/signing-key.pem
+
       - name: Package DMG
         env:
           VERSION: "0.0.${{ github.run_number }}"
+          CODESIGN_IDENTITY: "PasteMemo Local Signing"
         run: bash scripts/package.sh
+
+      - name: Verify signature
+        run: codesign -dv --verbose=2 dist/PasteMemo.app 2>&1 | grep -E 'Authority|Identifier=' || true
 
       - uses: actions/upload-artifact@v4
         with:
           name: PasteMemo-dmg-${{ github.run_number }}
           path: dist/*.dmg
           if-no-files-found: error
-
-# Trigger re-registration after enabling Actions on a fresh repo.
