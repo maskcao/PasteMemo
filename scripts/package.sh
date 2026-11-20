@@ -94,7 +94,9 @@ cp "$PRODUCT_BINARY" "$APP_DIR/Contents/MacOS/$EXECUTABLE_NAME"
 chmod +x "$APP_DIR/Contents/MacOS/$EXECUTABLE_NAME"
 cp "$ICON_FILE" "$APP_DIR/Contents/Resources/AppIcon.icns"
 for bundle in "${RESOURCE_BUNDLES[@]}"; do
-  cp -R "$bundle" "$APP_DIR/"
+  # Must live under Contents/Resources: codesign rejects unsealed items in the
+  # bundle root, and Bundle.module resolves this location first.
+  cp -R "$bundle" "$APP_DIR/Contents/Resources/"
 done
 # lproj per language (also carries the Shortcuts action titles), then the Shortcuts
 # metadata. Before codesign.
