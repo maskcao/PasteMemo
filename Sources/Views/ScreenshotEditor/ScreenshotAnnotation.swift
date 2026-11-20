@@ -4,7 +4,7 @@ import SwiftUI
 /// 单条标注。几何用图片坐标（左上原点），跨预览/扁平化渲染一致。
 struct ScreenshotAnnotation: Identifiable {
     enum Kind {
-        case arrow, rectangle, text, stepBadge, mosaic
+        case arrow, rectangle, ellipse, pen, highlighter, text, stepBadge, mosaic
     }
 
     let id = UUID()
@@ -15,12 +15,30 @@ struct ScreenshotAnnotation: Identifiable {
     var end: CGPoint
     var text: String = ""
     var mosaicImage: NSImage?
+    // pen / highlighter 的自由路径（图片坐标），其余 kind 不用
+    var points: [CGPoint] = []
 
     var rect: CGRect {
-        CGRect(
+        if kind == .pen || kind == .highlighter, !points.isEmpty {
+            let xs = points.map(\.x), ys = points.map(\.y)
+            return CGRect(
+                x: xs.min()!, y: ys.min()!,
+                width: xs.max()! - xs.min()!, height: ys.max()! - ys.min()!
+            )
+        }
+        return CGRect(
             x: min(start.x, end.x), y: min(start.y, end.y),
             width: abs(end.x - start.x), height: abs(end.y - start.y)
         )
+    }
+
+    /// 裁剪后整体平移（mosaicImage 是像素块，跟着 rect 走即可）
+    func translated(dx: CGFloat, dy: CGFloat) -> ScreenshotAnnotation {
+        var copy = self
+        copy.start = CGPoint(x: start.x + dx, y: start.y + dy)
+        copy.end = CGPoint(x: end.x + dx, y: end.y + dy)
+        copy.points = points.map { CGPoint(x: $0.x + dx, y: $0.y + dy) }
+        return copy
     }
 }
 
@@ -89,6 +107,28 @@ enum AnnotationRenderer {
             let inset = stroke / 2
             let path = Path(a.rect.insetBy(dx: inset, dy: inset))
             context.stroke(path, with: .color(color), lineWidth: stroke)
+
+        case .ellipse:
+            let inset = stroke / 2
+            let path = Path(ellipseIn: a.rect.insetBy(dx: inset, dy: inset))
+            context.stroke(path, with: .color(color), lineWidth: stroke)
+
+        case .pen, .highlighter:
+            var path = Path()
+            let line = a.points.isEmpty ? [a.start, a.end] : a.points
+            path.addLines(line)
+            if a.kind == .highlighter {
+                // 荧光笔：整条路径一次 stroke，半透明在单次合成里不会因线段交叠而叠深
+                context.stroke(
+                    path, with: .color(color.opacity(0.35)),
+                    style: StrokeStyle(lineWidth: stroke * 4, lineCap: .round, lineJoin: .round)
+                )
+            } else {
+                context.stroke(
+                    path, with: .color(color),
+                    style: StrokeStyle(lineWidth: stroke, lineCap: .round, lineJoin: .round)
+                )
+            }
 
         case .mosaic:
             if let mosaic = a.mosaicImage {

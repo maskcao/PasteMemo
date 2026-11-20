@@ -33,6 +33,27 @@ struct AnnotationCanvasView: View {
     }
 }
 
+/// 裁剪遮罩：裁剪框外压暗，框上白色描边。eoFill 挖洞。
+struct CropOverlayView: View {
+    let cropRect: CGRect
+    var displayScale: CGFloat = 1
+
+    var body: some View {
+        Canvas { context, size in
+            let rect = CGRect(
+                x: cropRect.minX * displayScale, y: cropRect.minY * displayScale,
+                width: cropRect.width * displayScale, height: cropRect.height * displayScale
+            )
+            var hole = Path()
+            hole.addRect(CGRect(origin: .zero, size: size))
+            hole.addRect(rect)
+            context.fill(hole, with: .color(.black.opacity(0.45)), style: FillStyle(eoFill: true))
+            context.stroke(Path(rect), with: .color(.white), lineWidth: 1.5)
+        }
+        .allowsHitTesting(false)
+    }
+}
+
 struct ScreenshotEditorView: View {
     let image: NSImage
     var onSave: (Data) -> Void
@@ -48,8 +69,8 @@ struct ScreenshotEditorView: View {
         _viewModel = State(initialValue: ScreenshotEditorViewModel(image: image))
     }
 
-    private var imgW: CGFloat { image.size.width }
-    private var imgH: CGFloat { image.size.height }
+    private var imgW: CGFloat { viewModel.image.size.width }
+    private var imgH: CGFloat { viewModel.image.size.height }
     private var isImageValid: Bool { imgW >= 1 && imgH >= 1 }
 
     var body: some View {
@@ -70,7 +91,7 @@ struct ScreenshotEditorView: View {
                 // 封顶 1：小图不放大，保持原始清晰度
                 let scale = min(1, proxy.size.width / imgW, proxy.size.height / imgH)
                 ZStack {
-                    Image(nsImage: image)
+                    Image(nsImage: viewModel.image)
                         .resizable()
                         .scaledToFit()
                     AnnotationCanvasView(
@@ -80,6 +101,9 @@ struct ScreenshotEditorView: View {
                         displayScale: scale
                     )
                     .allowsHitTesting(false)
+                    if viewModel.isCropping, let cropRect = viewModel.cropRect {
+                        CropOverlayView(cropRect: cropRect, displayScale: scale)
+                    }
                     if let draft = viewModel.textDraft {
                         textDraftField(draft, scale: scale)
                     }
@@ -133,11 +157,19 @@ struct ScreenshotEditorView: View {
     // MARK: - Toolbar（钉钉式：单行图标悬浮条）
 
     private var toolbar: some View {
-        HStack(spacing: 8) {
-            Text("\(Int(imgW)) × \(Int(imgH))")
+        HStack(spacing: 6) {
+            Group {
+                // 裁剪中实时显示选区尺寸
+                if viewModel.isCropping, let cropRect = viewModel.cropRect {
+                    Text("\(Int(cropRect.width)) × \(Int(cropRect.height))")
+                } else {
+                    Text("\(Int(imgW)) × \(Int(imgH))")
+                }
+            }
                 .font(.system(size: 11))
                 .monospacedDigit()
                 .foregroundStyle(.tertiary)
+                .frame(minWidth: 64, alignment: .leading)
             Divider().frame(height: 18)
             ForEach(ScreenshotEditorViewModel.Tool.allCases, id: \.self) { tool in
                 toolButton(tool)
@@ -181,9 +213,23 @@ struct ScreenshotEditorView: View {
             Divider().frame(height: 18)
 
             Button {
-                // Esc（.cancelAction）在文字输入中先只取消文字，再按一次才关窗口
+                saveToFile()
+            } label: {
+                Image(systemName: "square.and.arrow.down")
+                    .font(.system(size: 12, weight: .semibold))
+                    .frame(width: 26, height: 26)
+                    .foregroundStyle(.primary)
+            }
+            .buttonStyle(.plain)
+            .keyboardShortcut("s", modifiers: .command)
+            .help(L10n.tr("editor.saveToFile"))
+
+            Button {
+                // Esc（.cancelAction）分层退出：先文字 → 再裁剪 → 最后关窗口
                 if viewModel.textDraft != nil {
                     viewModel.cancelText()
+                } else if viewModel.isCropping {
+                    viewModel.exitCrop()
                 } else {
                     onClose()
                 }
@@ -198,7 +244,11 @@ struct ScreenshotEditorView: View {
             .help(L10n.tr("action.cancel"))
 
             Button {
-                save()
+                if viewModel.isCropping {
+                    viewModel.applyCrop()
+                } else {
+                    save()
+                }
             } label: {
                 Image(systemName: "checkmark")
                     .font(.system(size: 12, weight: .bold))
@@ -227,7 +277,12 @@ struct ScreenshotEditorView: View {
 
     private func toolButton(_ tool: ScreenshotEditorViewModel.Tool) -> some View {
         Button {
-            viewModel.tool = tool
+            if tool == .crop {
+                viewModel.toggleCrop()
+            } else {
+                viewModel.exitCrop()
+                viewModel.tool = tool
+            }
         } label: {
             Image(systemName: tool.icon)
                 .font(.system(size: 13))
@@ -284,5 +339,18 @@ struct ScreenshotEditorView: View {
         viewModel.commitText()
         guard let data = viewModel.flattenedPNGData() else { return }
         onSave(data)
+    }
+
+    private func saveToFile() {
+        viewModel.commitText()
+        guard let data = viewModel.flattenedPNGData() else { return }
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.png]
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyyMMdd-HHmmss"
+        panel.nameFieldStringValue = "PasteMemo-\(formatter.string(from: Date())).png"
+        if panel.runModal() == .OK, let url = panel.url {
+            try? data.write(to: url)
+        }
     }
 }

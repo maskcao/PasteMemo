@@ -6,25 +6,33 @@ import Observation
 @Observable
 final class ScreenshotEditorViewModel {
     enum Tool: CaseIterable {
-        case arrow, rectangle, text, stepBadge, mosaic
+        case rectangle, ellipse, arrow, pen, highlighter, text, stepBadge, mosaic, crop
 
         var icon: String {
             switch self {
-            case .arrow: "arrow.up.right"
             case .rectangle: "rectangle"
+            case .ellipse: "ellipse"
+            case .arrow: "arrow.up.right"
+            case .pen: "scribble.variable"
+            case .highlighter: "highlighter"
             case .text: "textformat"
             case .stepBadge: "number.circle"
             case .mosaic: "checkerboard.rectangle"
+            case .crop: "crop"
             }
         }
 
         var helpKey: String {
             switch self {
-            case .arrow: "editor.tool.arrow"
             case .rectangle: "editor.tool.rectangle"
+            case .ellipse: "editor.tool.ellipse"
+            case .arrow: "editor.tool.arrow"
+            case .pen: "editor.tool.pen"
+            case .highlighter: "editor.tool.highlighter"
             case .text: "editor.tool.text"
             case .stepBadge: "editor.tool.stepBadge"
             case .mosaic: "editor.tool.mosaic"
+            case .crop: "editor.tool.crop"
             }
         }
     }
@@ -34,14 +42,22 @@ final class ScreenshotEditorViewModel {
         var string: String
     }
 
-    let image: NSImage
+    /// 撤销快照：图像 + 标注一起存（裁剪会同时改两者）
+    struct Snapshot {
+        let image: NSImage
+        let annotations: [ScreenshotAnnotation]
+    }
+
+    private(set) var image: NSImage
     private(set) var annotations: [ScreenshotAnnotation] = []
-    private(set) var undoStack: [[ScreenshotAnnotation]] = []
-    private(set) var redoStack: [[ScreenshotAnnotation]] = []
+    private(set) var undoStack: [Snapshot] = []
+    private(set) var redoStack: [Snapshot] = []
     var tool: Tool = .arrow
     var colorIndex = 0
     var weightIndex = 1
     var textDraft: TextDraft?
+    private(set) var isCropping = false
+    private(set) var cropRect: CGRect?
 
     private var dragStart: CGPoint?
     private(set) var inProgress: ScreenshotAnnotation?
@@ -58,14 +74,25 @@ final class ScreenshotEditorViewModel {
     func dragMoved(at point: CGPoint) {
         if dragStart == nil { dragStart = point }
         guard let start = dragStart else { return }
+        if isCropping {
+            cropRect = Self.normalizedRect(from: start, to: point)
+            return
+        }
         switch tool {
-        case .arrow:
-            inProgress = ScreenshotAnnotation(kind: .arrow, colorIndex: colorIndex, weightIndex: weightIndex, start: start, end: point)
         case .rectangle:
             inProgress = ScreenshotAnnotation(kind: .rectangle, colorIndex: colorIndex, weightIndex: weightIndex, start: start, end: point)
+        case .ellipse:
+            inProgress = ScreenshotAnnotation(kind: .ellipse, colorIndex: colorIndex, weightIndex: weightIndex, start: start, end: point)
+        case .arrow:
+            inProgress = ScreenshotAnnotation(kind: .arrow, colorIndex: colorIndex, weightIndex: weightIndex, start: start, end: point)
+        case .pen, .highlighter:
+            let kind: ScreenshotAnnotation.Kind = tool == .pen ? .pen : .highlighter
+            var points = inProgress?.points ?? [start]
+            points.append(point)
+            inProgress = ScreenshotAnnotation(kind: kind, colorIndex: colorIndex, weightIndex: weightIndex, start: start, end: point, points: points)
         case .mosaic:
             inProgress = ScreenshotAnnotation(kind: .mosaic, colorIndex: colorIndex, weightIndex: weightIndex, start: start, end: point)
-        case .text, .stepBadge:
+        case .text, .stepBadge, .crop:
             inProgress = nil
         }
     }
@@ -76,15 +103,26 @@ final class ScreenshotEditorViewModel {
             inProgress = nil
         }
         guard let start = dragStart else { return }
+        if isCropping { return } // cropRect 在 dragMoved 里已实时更新
         let travel = abs(point.x - start.x) + abs(point.y - start.y)
 
         switch tool {
-        case .arrow, .rectangle:
+        case .rectangle, .ellipse, .arrow:
             guard travel > tapThreshold else { return }
+            let kind: ScreenshotAnnotation.Kind = tool == .rectangle ? .rectangle : (tool == .ellipse ? .ellipse : .arrow)
             commit(ScreenshotAnnotation(
-                kind: tool == .arrow ? .arrow : .rectangle,
+                kind: kind,
                 colorIndex: colorIndex, weightIndex: weightIndex,
                 start: start, end: point
+            ))
+        case .pen, .highlighter:
+            let kind: ScreenshotAnnotation.Kind = tool == .pen ? .pen : .highlighter
+            var points = inProgress?.points ?? [start]
+            if points.count == 1 { points.append(point) } // 单击也出个圆点
+            commit(ScreenshotAnnotation(
+                kind: kind,
+                colorIndex: colorIndex, weightIndex: weightIndex,
+                start: start, end: point, points: points
             ))
         case .mosaic:
             let region = ScreenshotAnnotation(
@@ -105,7 +143,72 @@ final class ScreenshotEditorViewModel {
             ))
         case .text:
             textDraft = TextDraft(point: point, string: "")
+        case .crop:
+            break
         }
+    }
+
+    // MARK: - Crop
+
+    func toggleCrop() {
+        if isCropping {
+            exitCrop()
+        } else {
+            isCropping = true
+            tool = .crop
+            cropRect = CGRect(x: 0, y: 0, width: image.size.width, height: image.size.height)
+        }
+    }
+
+    func exitCrop() {
+        isCropping = false
+        cropRect = nil
+        tool = .arrow
+    }
+
+    func applyCrop() {
+        guard isCropping, let rect = cropRect,
+              rect.width >= 4, rect.height >= 4 else {
+            exitCrop()
+            return
+        }
+        guard let tiff = image.tiffRepresentation,
+              let rep = NSBitmapImageRep(data: tiff),
+              let cgImage = rep.cgImage,
+              image.size.width > 0 else {
+            exitCrop()
+            return
+        }
+        let pxPerPt = CGFloat(rep.pixelsWide) / image.size.width
+        let pixelRect = CGRect(
+            x: rect.minX * pxPerPt, y: rect.minY * pxPerPt,
+            width: rect.width * pxPerPt, height: rect.height * pxPerPt
+        )
+        .integral
+        .intersection(CGRect(x: 0, y: 0, width: rep.pixelsWide, height: rep.pixelsHigh))
+        guard pixelRect.width >= 2, pixelRect.height >= 2,
+              let cropped = cgImage.cropping(to: pixelRect) else {
+            exitCrop()
+            return
+        }
+        let newImage = NSImage(
+            cgImage: cropped,
+            size: NSSize(width: pixelRect.width / pxPerPt, height: pixelRect.height / pxPerPt)
+        )
+        pushUndo()
+        image = newImage
+        // 标注随裁剪整体平移；越界部分由画布自然裁掉
+        let dx = -CGFloat(pixelRect.minX) / pxPerPt
+        let dy = -CGFloat(pixelRect.minY) / pxPerPt
+        annotations = annotations.map { $0.translated(dx: dx, dy: dy) }
+        exitCrop()
+    }
+
+    private static func normalizedRect(from a: CGPoint, to b: CGPoint) -> CGRect {
+        CGRect(
+            x: min(a.x, b.x), y: min(a.y, b.y),
+            width: abs(b.x - a.x), height: abs(b.y - a.y)
+        )
     }
 
     func commitText() {
@@ -129,15 +232,17 @@ final class ScreenshotEditorViewModel {
 
     func undo() {
         guard let previous = undoStack.popLast() else { return }
-        redoStack.append(annotations)
-        annotations = previous
+        redoStack.append(Snapshot(image: image, annotations: annotations))
+        image = previous.image
+        annotations = previous.annotations
         textDraft = nil
     }
 
     func redo() {
         guard let next = redoStack.popLast() else { return }
-        undoStack.append(annotations)
-        annotations = next
+        undoStack.append(Snapshot(image: image, annotations: annotations))
+        image = next.image
+        annotations = next.annotations
         textDraft = nil
     }
 
@@ -147,7 +252,7 @@ final class ScreenshotEditorViewModel {
     }
 
     private func pushUndo() {
-        undoStack.append(annotations)
+        undoStack.append(Snapshot(image: image, annotations: annotations))
         if undoStack.count > 100 { undoStack.removeFirst() }
         redoStack.removeAll()
     }

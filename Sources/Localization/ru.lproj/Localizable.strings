@@ -268,12 +268,17 @@
 "action.confirm" = "ОК";
 "action.annotate" = "Аннотировать";
 "editor.screenshot.saveCopy" = "Сохранить и скопировать";
+"editor.saveToFile" = "Сохранить в файл";
 "settings.screenshot.autoOpenEditor" = "Открывать редактор после снимка";
 "editor.tool.arrow" = "Стрелка";
 "editor.tool.rectangle" = "Прямоугольник";
 "editor.tool.text" = "Текст";
 "editor.tool.stepBadge" = "Номер шага";
 "editor.tool.mosaic" = "Мозаика";
+"editor.tool.ellipse" = "Овал";
+"editor.tool.pen" = "Кисть";
+"editor.tool.highlighter" = "Маркер";
+"editor.tool.crop" = "Обрезать";
 "editor.undo" = "Отменить";
 "editor.redo" = "Вернуть";
 "action.assignGroup" = "Назначить группу";

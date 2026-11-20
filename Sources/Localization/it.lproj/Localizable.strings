@@ -268,12 +268,17 @@
 "action.confirm" = "OK";
 "action.annotate" = "Annota";
 "editor.screenshot.saveCopy" = "Salva e copia";
+"editor.saveToFile" = "Salva su file";
 "settings.screenshot.autoOpenEditor" = "Apri l'editor dopo l'acquisizione";
 "editor.tool.arrow" = "Freccia";
 "editor.tool.rectangle" = "Rettangolo";
 "editor.tool.text" = "Testo";
 "editor.tool.stepBadge" = "Numero di passo";
 "editor.tool.mosaic" = "Mosaico";
+"editor.tool.ellipse" = "Ellisse";
+"editor.tool.pen" = "Penna";
+"editor.tool.highlighter" = "Evidenziatore";
+"editor.tool.crop" = "Ritaglia";
 "editor.undo" = "Annulla";
 "editor.redo" = "Ripristina";
 "action.assignGroup" = "Assegna al gruppo";

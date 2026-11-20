@@ -55,6 +55,8 @@ final class ScreenshotEditorWindowController: NSObject, NSWindowDelegate {
         )
         window.contentView = hosting
         window.isReleasedWhenClosed = false
+        // 单行工具条比部分小图宽：窗口别缩到工具条以下
+        window.contentMinSize = NSSize(width: 780, height: 240)
         window.delegate = self
         self.window = window
         self.hostingView = hosting

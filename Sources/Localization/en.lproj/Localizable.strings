@@ -295,12 +295,17 @@
 "action.confirm" = "OK";
 "action.annotate" = "Annotate";
 "editor.screenshot.saveCopy" = "Save & Copy";
+"editor.saveToFile" = "Save to File";
 "settings.screenshot.autoOpenEditor" = "Open editor after capturing";
 "editor.tool.arrow" = "Arrow";
 "editor.tool.rectangle" = "Rectangle";
 "editor.tool.text" = "Text";
 "editor.tool.stepBadge" = "Step number";
 "editor.tool.mosaic" = "Mosaic";
+"editor.tool.ellipse" = "Ellipse";
+"editor.tool.pen" = "Pen";
+"editor.tool.highlighter" = "Highlighter";
+"editor.tool.crop" = "Crop";
 "editor.undo" = "Undo";
 "editor.redo" = "Redo";
 "action.assignGroup" = "Assign to Group";

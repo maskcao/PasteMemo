@@ -123,12 +123,17 @@
 "action.confirm" = "OK";
 "action.annotate" = "Annoter";
 "editor.screenshot.saveCopy" = "Enregistrer et copier";
+"editor.saveToFile" = "Enregistrer dans un fichier";
 "settings.screenshot.autoOpenEditor" = "Ouvrir l'éditeur après la capture";
 "editor.tool.arrow" = "Flèche";
 "editor.tool.rectangle" = "Rectangle";
 "editor.tool.text" = "Texte";
 "editor.tool.stepBadge" = "Numéro d'étape";
 "editor.tool.mosaic" = "Mosaïque";
+"editor.tool.ellipse" = "Ellipse";
+"editor.tool.pen" = "Stylo";
+"editor.tool.highlighter" = "Surligneur";
+"editor.tool.crop" = "Recadrer";
 "editor.undo" = "Annuler";
 "editor.redo" = "Rétablir";
 "action.assignGroup" = "Attribuer au groupe";

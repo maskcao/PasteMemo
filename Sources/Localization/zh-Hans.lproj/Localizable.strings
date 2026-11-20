@@ -295,12 +295,17 @@
 "action.confirm" = "确定";
 "action.annotate" = "标注编辑";
 "editor.screenshot.saveCopy" = "保存并复制";
+"editor.saveToFile" = "保存到本地";
 "settings.screenshot.autoOpenEditor" = "截图后打开标注编辑器";
 "editor.tool.arrow" = "箭头";
 "editor.tool.rectangle" = "矩形";
 "editor.tool.text" = "文字";
 "editor.tool.stepBadge" = "步骤序号";
 "editor.tool.mosaic" = "马赛克";
+"editor.tool.ellipse" = "椭圆";
+"editor.tool.pen" = "画笔";
+"editor.tool.highlighter" = "荧光笔";
+"editor.tool.crop" = "裁剪";
 "editor.undo" = "撤销";
 "editor.redo" = "重做";
 "action.assignGroup" = "移入分组";

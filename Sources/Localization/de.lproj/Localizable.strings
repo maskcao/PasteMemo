@@ -123,12 +123,17 @@
 "action.confirm" = "OK";
 "action.annotate" = "Annotieren";
 "editor.screenshot.saveCopy" = "Sichern & kopieren";
+"editor.saveToFile" = "In Datei speichern";
 "settings.screenshot.autoOpenEditor" = "Nach Aufnahme Editor öffnen";
 "editor.tool.arrow" = "Pfeil";
 "editor.tool.rectangle" = "Rechteck";
 "editor.tool.text" = "Text";
 "editor.tool.stepBadge" = "Schrittnummer";
 "editor.tool.mosaic" = "Mosaik";
+"editor.tool.ellipse" = "Ellipse";
+"editor.tool.pen" = "Stift";
+"editor.tool.highlighter" = "Textmarker";
+"editor.tool.crop" = "Zuschneiden";
 "editor.undo" = "Widerrufen";
 "editor.redo" = "Wiederholen";
 "action.assignGroup" = "Gruppe zuweisen";

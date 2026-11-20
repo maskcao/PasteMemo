@@ -268,12 +268,17 @@
 "action.confirm" = "OK";
 "action.annotate" = "Anotasi";
 "editor.screenshot.saveCopy" = "Simpan & Salin";
+"editor.saveToFile" = "Simpan ke Berkas";
 "settings.screenshot.autoOpenEditor" = "Buka editor setelah tangkapan";
 "editor.tool.arrow" = "Panah";
 "editor.tool.rectangle" = "Persegi panjang";
 "editor.tool.text" = "Teks";
 "editor.tool.stepBadge" = "Nomor langkah";
 "editor.tool.mosaic" = "Mosaik";
+"editor.tool.ellipse" = "Elips";
+"editor.tool.pen" = "Pena";
+"editor.tool.highlighter" = "Stabilo";
+"editor.tool.crop" = "Pangkas";
 "editor.undo" = "Urungkan";
 "editor.redo" = "Ulangi";
 "action.assignGroup" = "Tetapkan ke Grup";
