@@ -74,6 +74,15 @@ if [[ "$LINKED_SDK" != "$EXPECTED_SDK" ]]; then
   exit 1
 fi
 
+# MCP CLI proxy (AI Agents integration, see MCPInstallerAgents): built alongside
+# the main app and expected at Contents/MacOS/pastememo-mcp.
+"${SWIFT_BUILD[@]}" "${APPINTENTS_SWIFTC_FLAGS[@]}" --product pastememo-mcp
+MCP_BINARY="$BUILD_DIR/pastememo-mcp"
+if [[ ! -x "$MCP_BINARY" ]]; then
+  echo "Built MCP binary not found: $MCP_BINARY" >&2
+  exit 1
+fi
+
 # Glob every *.bundle produced by SwiftPM resource targets. Hard-coding names
 # silently misses new SPM dependencies and crashes Bundle.module at runtime.
 RESOURCE_BUNDLES=("$BUILD_DIR"/*.bundle)
@@ -92,6 +101,8 @@ mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Resources" "$DIST_DIR"
 
 cp "$PRODUCT_BINARY" "$APP_DIR/Contents/MacOS/$EXECUTABLE_NAME"
 chmod +x "$APP_DIR/Contents/MacOS/$EXECUTABLE_NAME"
+cp "$MCP_BINARY" "$APP_DIR/Contents/MacOS/pastememo-mcp"
+chmod +x "$APP_DIR/Contents/MacOS/pastememo-mcp"
 cp "$ICON_FILE" "$APP_DIR/Contents/Resources/AppIcon.icns"
 for bundle in "${RESOURCE_BUNDLES[@]}"; do
   # Must live under Contents/Resources: codesign rejects unsealed items in the
@@ -153,6 +164,8 @@ EOF
 
 if [[ -n "${CODESIGN_IDENTITY:-}" ]]; then
   printf '[package] codesigning app bundle\n'
+  # Inner → outer: the secondary executable first, then the bundle.
+  codesign --force --options runtime --sign "$CODESIGN_IDENTITY" "$APP_DIR/Contents/MacOS/pastememo-mcp"
   codesign --force --deep --options runtime --sign "$CODESIGN_IDENTITY" "$APP_DIR"
 fi
 
