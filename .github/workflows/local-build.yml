@@ -30,7 +30,9 @@ jobs:
           openssl pkcs12 -in /tmp/pastememo-signing.p12 -passin "pass:$P12_PASSWORD" -nodes -nocerts -out /tmp/signing-key.pem
           security import /tmp/signing-cert.pem -k "$HOME/Library/Keychains/login.keychain-db"
           security import /tmp/signing-key.pem -k "$HOME/Library/Keychains/login.keychain-db" -T /usr/bin/codesign
-          security add-trusted-cert -r trustRoot -k "$HOME/Library/Keychains/login.keychain-db" /tmp/signing-cert.pem
+          # sudo + admin-domain trust: the user-domain variant pops an authorization
+          # dialog that no one can dismiss on a headless runner (hangs the step).
+          sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain /tmp/signing-cert.pem
           rm -f /tmp/pastememo-signing.p12 /tmp/signing-cert.pem /tmp/signing-key.pem
 
       - name: Package DMG
