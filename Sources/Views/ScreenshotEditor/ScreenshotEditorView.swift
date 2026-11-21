@@ -265,7 +265,7 @@ struct ScreenshotEditorView: View {
         .padding(.vertical, 6)
         .background(
             RoundedRectangle(cornerRadius: 10)
-                .fill(Color(nsColor: .controlBackgroundColor))
+                .fill(.ultraThinMaterial)
                 .shadow(color: .black.opacity(0.22), radius: 9, y: 3)
         )
         .overlay(

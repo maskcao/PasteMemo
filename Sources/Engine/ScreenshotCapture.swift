@@ -1,8 +1,8 @@
 import AppKit
 import CoreGraphics
 
-/// 截图入口：热键触发后调 `screencapture -i -c`，结果直接进剪贴板，
-/// 由 ClipboardManager 的常规监听接住（自动 OCR / 搜索 / 以文件粘贴全部复用）。
+/// 截图入口：热键触发后优先走浮引式自绘框选（冻结帧 + 放大镜 + 窗口吸附），
+/// 冻结帧拿不到时回退 `screencapture -i -c`，结果进剪贴板由 ClipboardManager 常规监听接住。
 @MainActor
 final class ScreenshotCapture {
     static let shared = ScreenshotCapture()
@@ -18,6 +18,11 @@ final class ScreenshotCapture {
     func trigger() {
         guard !isCapturing else { return }
         if CGPreflightScreenCaptureAccess() {
+            // 自绘框选：确认后按「自动弹编辑器」偏好进编辑器或剪贴板；
+            // begin 失败（拿不到冻结帧）回退系统框选
+            if ScreenshotSelectionController.shared.begin() {
+                return
+            }
             launchCapture()
         } else {
             CGRequestScreenCaptureAccess()
