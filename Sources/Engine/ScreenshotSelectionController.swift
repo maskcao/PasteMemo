@@ -1611,6 +1611,15 @@ final class ScreenshotSelectionSurfaceView: NSView {
             color.setStroke()
             path.stroke()
 
+        case .roundedRect:
+            let rect = a.rect.insetBy(dx: stroke / 2, dy: stroke / 2)
+            // 圆角随短边缩放，上限 24pt（与 SwiftUI 绘制路径保持一致）
+            let radius = min(min(rect.width, rect.height) * 0.2, 24)
+            let path = NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius)
+            path.lineWidth = stroke
+            color.setStroke()
+            path.stroke()
+
         case .ellipse:
             let path = NSBezierPath(ovalIn: a.rect.insetBy(dx: stroke / 2, dy: stroke / 2))
             path.lineWidth = stroke
@@ -1923,7 +1932,7 @@ final class SelectionToolbar: NSVisualEffectView {
 
     private static func tag(for tool: ScreenshotAnnotation.Kind?) -> Int? {
         switch tool {
-        case .rectangle, .ellipse: return 1
+        case .rectangle, .roundedRect, .ellipse: return 1
         case .arrow: return 3
         case .pen: return 4
         case .mosaic: return 5
@@ -2052,7 +2061,7 @@ final class SelectionOptionsBar: NSVisualEffectView {
         previewDot = nil
 
         switch tool {
-        case .rectangle, .ellipse:
+        case .rectangle, .roundedRect, .ellipse:
             addShapeControl(kind: shapeKind)
             addDivider()
             addWidthControl(preset: widthPreset)

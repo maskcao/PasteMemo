@@ -71,7 +71,7 @@ final class ScreenshotCapture {
                 height: screen.frame.height
             )
             label.autoresizingMask = [.width, .height]
-            label.textAlignment = .center
+            label.alignment = .center
             container.addSubview(label)
             window.contentView = container
             window.makeKeyAndOrderFront(nil)
