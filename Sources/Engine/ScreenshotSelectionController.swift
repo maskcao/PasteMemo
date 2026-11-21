@@ -102,6 +102,7 @@ final class ScreenshotSelectionController: NSObject {
 
         func showPanel() {
             makeKeyAndOrderFront(nil)
+            makeFirstResponder(contentView)
             contentView?.needsDisplay = true
         }
     }
@@ -129,10 +130,12 @@ final class ScreenshotSelectionSurfaceView: NSView {
     private var cachedWindows: [(rect: CGRect, area: CGFloat)] = []
 
     private enum ResizeEdge { case none, topLeft, top, topRight, left, right, bottomLeft, bottom, bottomRight }
+    private enum ToolbarButton { case cancel, confirm }
 
     private let magnifierDiameter: CGFloat = 88
     private let magnifierZoom: CGFloat = 8
     private let handleSize: CGFloat = 9
+    private var hoveredToolbarButton: ToolbarButton?
 
     init(frame: NSRect, image: NSImage, pixelScale: CGFloat, screen: NSScreen, owner: ScreenshotSelectionController) {
         self.image = image
@@ -219,6 +222,19 @@ final class ScreenshotSelectionSurfaceView: NSView {
         let point = self.point(for: event)
         window?.makeFirstResponder(self)
 
+        if let sel = selection, dragMode == .none {
+            // 工具条按钮（钉钉式：松手后出现 ✓/✕）
+            let toolbar = toolbarLayout(for: sel)
+            if toolbar.confirm.contains(point) {
+                confirm()
+                return
+            }
+            if toolbar.cancel.contains(point) {
+                owner?.cancel()
+                return
+            }
+        }
+
         if let sel = selection {
             let edge = handleEdge(at: point, in: sel)
             if edge != .none {
@@ -226,6 +242,10 @@ final class ScreenshotSelectionSurfaceView: NSView {
                 resizeEdge = edge
                 rectAtDragStart = sel
                 dragOrigin = point
+                return
+            }
+            if event.clickCount >= 2 && sel.contains(point) {
+                confirm()
                 return
             }
             if sel.contains(point) {
@@ -309,7 +329,18 @@ final class ScreenshotSelectionSurfaceView: NSView {
 
     override func mouseMoved(with event: NSEvent) {
         let point = self.point(for: event)
-        magnifierPoint = point
+        // 选区完成后隐藏放大镜，别挡工具条
+        if selection == nil || dragMode != .none {
+            magnifierPoint = point
+        } else {
+            magnifierPoint = nil
+        }
+        if let sel = selection, dragMode == .none {
+            let toolbar = toolbarLayout(for: sel)
+            hoveredToolbarButton = toolbar.cancel.contains(point) ? .cancel : (toolbar.confirm.contains(point) ? .confirm : nil)
+        } else {
+            hoveredToolbarButton = nil
+        }
         if selection == nil {
             refreshCandidate(at: point)
         }
@@ -318,6 +349,7 @@ final class ScreenshotSelectionSurfaceView: NSView {
 
     override func mouseExited(with event: NSEvent) {
         magnifierPoint = nil
+        hoveredToolbarButton = nil
         needsDisplay = true
     }
 
@@ -418,6 +450,11 @@ final class ScreenshotSelectionSurfaceView: NSView {
 
     override func resetCursorRects() {
         addCursorRect(bounds, cursor: .crosshair)
+        if let sel = selection, dragMode == .none {
+            let toolbar = toolbarLayout(for: sel)
+            addCursorRect(toolbar.confirm, cursor: .pointingHand)
+            addCursorRect(toolbar.cancel, cursor: .pointingHand)
+        }
         if let sel = selection {
             let edges: [(ResizeEdge, NSRect, NSCursor)] = [
                 (.topLeft, handleRect(at: sel.origin), .crosshair),
@@ -480,7 +517,7 @@ final class ScreenshotSelectionSurfaceView: NSView {
         }
 
         if let sel {
-            // 选区描边 + 8 手柄 + 尺寸徽章
+            // 选区描边 + 8 手柄；拖拽中显示像素徽章，松手后换成工具条
             ctx.setStrokeColor(NSColor.white.cgColor)
             ctx.setLineWidth(1.5)
             ctx.stroke(sel.insetBy(dx: 0.75, dy: 0.75))
@@ -503,7 +540,13 @@ final class ScreenshotSelectionSurfaceView: NSView {
                 ctx.setLineWidth(1)
                 ctx.stroke(rect)
             }
-            drawSizeBadge(for: sel, at: badgeAnchor(for: sel), ctx: ctx)
+            if dragMode != .none {
+                drawSizeBadge(for: sel, at: badgeAnchor(for: sel), ctx: ctx)
+            }
+        }
+
+        if let sel, dragMode == .none {
+            drawToolbar(for: sel, ctx: ctx)
         }
 
         if let point = magnifierPoint {
@@ -514,6 +557,79 @@ final class ScreenshotSelectionSurfaceView: NSView {
     private func badgeAnchor(for rect: CGRect) -> CGPoint {
         let below = rect.maxY + 8
         return CGPoint(x: rect.midX, y: below + 20 > bounds.height ? rect.minY - 28 : below)
+    }
+
+    // MARK: - Completion toolbar（钉钉式：松手后选区角落出现 ✓/✕）
+
+    private struct ToolbarLayout {
+        let frame: NSRect
+        let cancel: NSRect
+        let confirm: NSRect
+    }
+
+    private func toolbarLayout(for sel: CGRect) -> ToolbarLayout {
+        let width: CGFloat = 74
+        let height: CGFloat = 40
+        let button: CGFloat = 28
+        var x = sel.maxX - width
+        var y = sel.maxY + 10
+        if y + height > bounds.height {
+            y = sel.minY - 10 - height
+        }
+        x = max(0, min(x, bounds.width - width))
+        let frame = NSRect(x: x, y: y, width: width, height: height)
+        return ToolbarLayout(
+            frame: frame,
+            cancel: NSRect(x: x + 6, y: y + 6, width: button, height: button),
+            confirm: NSRect(x: x + 40, y: y + 6, width: button, height: button)
+        )
+    }
+
+    private func drawToolbar(for sel: CGRect, ctx: CGContext) {
+        let toolbar = toolbarLayout(for: sel)
+        ctx.saveGState()
+        // 阴影偏移在设备空间，向下 = 负 dy
+        ctx.setShadow(offset: CGSize(width: 0, height: -3), blur: 9, color: NSColor.black.withAlphaComponent(0.28).cgColor)
+        let pill = NSBezierPath(roundedRect: toolbar.frame, xRadius: 10, yRadius: 10)
+        NSColor.white.setFill()
+        pill.fill()
+        ctx.setShadow(offset: .zero, blur: 0, color: nil)
+        ctx.setStrokeColor(NSColor.black.withAlphaComponent(0.1).cgColor)
+        ctx.setLineWidth(1)
+        pill.stroke()
+
+        let dingtalkBlue = NSColor(red: 0.086, green: 0.467, blue: 1, alpha: 1)
+        drawToolbarButton(in: toolbar.cancel, background: hoveredToolbarButton == .cancel ? NSColor(white: 0.86, alpha: 1) : NSColor(white: 0.93, alpha: 1), glyph: .cross, ctx: ctx)
+        drawToolbarButton(in: toolbar.confirm, background: hoveredToolbarButton == .confirm ? dingtalkBlue.withAlphaComponent(0.85) : dingtalkBlue, glyph: .check, ctx: ctx)
+        ctx.restoreGState()
+    }
+
+    private enum ToolbarGlyph { case cross, check }
+
+    private func drawToolbarButton(in rect: NSRect, background: NSColor, glyph: ToolbarGlyph, ctx: CGContext) {
+        background.setFill()
+        NSBezierPath(ovalIn: rect).fill()
+        let path = NSBezierPath()
+        path.lineCapStyle = .round
+        path.lineJoinStyle = .round
+        switch glyph {
+        case .cross:
+            let inset: CGFloat = 9.5
+            path.lineWidth = 2
+            path.move(to: CGPoint(x: rect.minX + inset, y: rect.minY + inset))
+            path.line(to: CGPoint(x: rect.maxX - inset, y: rect.maxY - inset))
+            path.move(to: CGPoint(x: rect.maxX - inset, y: rect.minY + inset))
+            path.line(to: CGPoint(x: rect.minX + inset, y: rect.maxY - inset))
+            NSColor(white: 0.42, alpha: 1).setStroke()
+        case .check:
+            path.lineWidth = 2.2
+            // 视图 flipped（+y 向下）：先上左、下探、再上收，渲染出正立 ✓
+            path.move(to: CGPoint(x: rect.minX + 7, y: rect.midY - 2.5))
+            path.line(to: CGPoint(x: rect.minX + 12, y: rect.midY + 4))
+            path.line(to: CGPoint(x: rect.maxX - 7, y: rect.midY - 5))
+            NSColor.white.setStroke()
+        }
+        path.stroke()
     }
 
     private func drawSizeBadge(for rect: CGRect, at anchor: CGPoint, ctx: CGContext) {
