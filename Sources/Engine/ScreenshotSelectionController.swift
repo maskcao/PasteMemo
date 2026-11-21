@@ -1,9 +1,10 @@
 import AppKit
 import CoreGraphics
+import UniformTypeIdentifiers
 
 /// 浮引式自绘框选：触发热键后逐屏开全屏透明面板，先用 CGDisplayCreateImage 冻结当前画面，
 /// 之后的框选/标注都在冻结帧上做——不存在「截到自己的遮罩」的问题。
-/// 确认后从冻结帧裁出选区 → 走既有的标注编辑器管线。
+/// 标注工具条挂在选区下方（浮引同款玻璃条），确认后扁平化直接进剪贴板，不再弹独立编辑器窗口。
 @MainActor
 final class ScreenshotSelectionController: NSObject {
     static let shared = ScreenshotSelectionController()
@@ -45,25 +46,29 @@ final class ScreenshotSelectionController: NSObject {
         return true
     }
 
-    func confirmSelection(image: NSImage) {
+    func confirmSelection(pngData: Data) {
         closeAll()
-        guard let tiff = image.tiffRepresentation,
-              let rep = NSBitmapImageRep(data: tiff),
-              let png = rep.representation(using: .png, properties: [:]) else { return }
-        let autoOpenEditor = UserDefaults.standard.object(forKey: "screenshotAutoOpenEditor") as? Bool ?? true
-        if autoOpenEditor {
-            ScreenshotEditorWindowController.present(imageData: png)
-        } else {
-            // 不带 markAsPasteMemoWrite 写剪贴板 → ClipboardManager 照常捕获成新条目
-            let pasteboard = NSPasteboard.general
-            pasteboard.clearContents()
-            pasteboard.setData(png, forType: .png)
-            ToastCenter.shared.show(ToastDescriptor(message: L10n.tr("action.copied"), icon: .success))
-        }
+        // 不带 markAsPasteMemoWrite 写剪贴板 → ClipboardManager 照常捕获成新条目
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setData(pngData, forType: .png)
+        ToastCenter.shared.show(ToastDescriptor(message: L10n.tr("action.copied"), icon: .success))
     }
 
     func cancel() {
         closeAll()
+    }
+
+    /// 保存面板是普通层级的窗口，会被 screenSaver 级浮层盖住——模态期间临时降级。
+    func runSavePanel(_ panel: NSSavePanel) -> NSApplication.ModalResponse {
+        panels.forEach { $0.level = .normal }
+        NSApp.activate(ignoringOtherApps: true)
+        let result = panel.runModal()
+        panels.forEach { panel in
+            panel.level = .screenSaver
+            panel.makeKey()
+        }
+        return result
     }
 
     private func closeAll() {
@@ -109,6 +114,7 @@ final class ScreenshotSelectionController: NSObject {
 }
 
 /// 冻结帧选区面。坐标系 = 视图自身（flipped，左上原点 = 屏幕左上），尺寸标注用像素。
+/// 选区确认后工具条浮出，标注直接画在冻结帧上（浮引式），不再打开独立标注编辑器。
 final class ScreenshotSelectionSurfaceView: NSView {
     private let image: NSImage
     private let pixelScale: CGFloat
@@ -119,6 +125,17 @@ final class ScreenshotSelectionSurfaceView: NSView {
     var selection: CGRect?
     var candidate: CGRect?
     var magnifierPoint: CGPoint?
+    var annotations: [ScreenshotAnnotation] = []
+
+    private var undoStack: [[ScreenshotAnnotation]] = []
+    private var redoStack: [[ScreenshotAnnotation]] = []
+    private var activeTool: ScreenshotAnnotation.Kind?
+    private var colorIndex = 0
+    private var weightIndex = 1
+    private var draft: ScreenshotAnnotation?
+    private var textField: NSTextField?
+    private var textCancelling = false
+
     private enum DragMode { case none, drawing, moving, resizing }
     private var dragMode: DragMode = .none
     private var dragOrigin: CGPoint = .zero
@@ -129,13 +146,21 @@ final class ScreenshotSelectionSurfaceView: NSView {
     private var windowPickRect: CGRect?
     private var cachedWindows: [(rect: CGRect, area: CGFloat)] = []
 
+    private var toolbar: SelectionToolbar!
+
     private enum ResizeEdge { case none, topLeft, top, topRight, left, right, bottomLeft, bottom, bottomRight }
-    private enum ToolbarButton { case cancel, confirm }
 
     private let magnifierDiameter: CGFloat = 88
     private let magnifierZoom: CGFloat = 8
     private let handleSize: CGFloat = 9
-    private var hoveredToolbarButton: ToolbarButton?
+
+    private static let nsPalette: [NSColor] = [
+        NSColor(red: 1.00, green: 0.27, blue: 0.23, alpha: 1),
+        NSColor(red: 1.00, green: 0.80, blue: 0.00, alpha: 1),
+        NSColor(red: 0.20, green: 0.78, blue: 0.35, alpha: 1),
+        NSColor(red: 0.00, green: 0.48, blue: 1.00, alpha: 1),
+        NSColor(red: 0.10, green: 0.10, blue: 0.12, alpha: 1),
+    ]
 
     init(frame: NSRect, image: NSImage, pixelScale: CGFloat, screen: NSScreen, owner: ScreenshotSelectionController) {
         self.image = image
@@ -150,12 +175,48 @@ final class ScreenshotSelectionSurfaceView: NSView {
             options: [.mouseMoved, .mouseEnteredAndExited, .activeAlways, .inVisibleRect],
             owner: self
         ))
+        toolbar = SelectionToolbar(target: self, action: #selector(toolbarAction(_:)))
+        toolbar.isHidden = true
+        addSubview(toolbar)
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
 
     override var acceptsFirstResponder: Bool { true }
     override var isFlipped: Bool { true }
+
+    override func layout() {
+        super.layout()
+        positionToolbar()
+    }
+
+    private func positionToolbar() {
+        guard let sel = selection, dragMode == .none else {
+            toolbar.isHidden = true
+            return
+        }
+        toolbar.isHidden = false
+        let size = toolbar.fittingSize
+        var x = sel.midX - size.width / 2
+        var y = sel.maxY + 10
+        if y + size.height > bounds.height {
+            y = sel.minY - 10 - size.height
+        }
+        x = max(8, min(x, bounds.width - size.width - 8))
+        y = max(8, min(y, bounds.height - size.height - 8))
+        toolbar.frame = NSRect(origin: CGPoint(x: x, y: y), size: size)
+    }
+
+    private func syncToolbar() {
+        toolbar.update(
+            tool: activeTool,
+            color: colorIndex,
+            weight: weightIndex,
+            canUndo: !undoStack.isEmpty,
+            canRedo: !redoStack.isEmpty
+        )
+        needsLayout = true
+    }
 
     // MARK: - Window snapping
 
@@ -221,19 +282,7 @@ final class ScreenshotSelectionSurfaceView: NSView {
     override func mouseDown(with event: NSEvent) {
         let point = self.point(for: event)
         window?.makeFirstResponder(self)
-
-        if let sel = selection, dragMode == .none {
-            // 工具条按钮（钉钉式：松手后出现 ✓/✕）
-            let toolbar = toolbarLayout(for: sel)
-            if toolbar.confirm.contains(point) {
-                confirm()
-                return
-            }
-            if toolbar.cancel.contains(point) {
-                owner?.cancel()
-                return
-            }
-        }
+        finishTextEntry(commit: true)
 
         if let sel = selection {
             let edge = handleEdge(at: point, in: sel)
@@ -244,12 +293,16 @@ final class ScreenshotSelectionSurfaceView: NSView {
                 dragOrigin = point
                 return
             }
-            if event.clickCount >= 2 && sel.contains(point) {
-                confirm()
-                return
-            }
             if sel.contains(point) {
-                // 点击选区内部：直接平移
+                if let tool = activeTool {
+                    beginAnnotation(tool: tool, at: point)
+                    return
+                }
+                if event.clickCount >= 2 {
+                    confirm()
+                    return
+                }
+                // 指针模式：拖动选区平移
                 dragMode = .moving
                 rectAtDragStart = sel
                 dragOrigin = point
@@ -264,26 +317,40 @@ final class ScreenshotSelectionSurfaceView: NSView {
             return
         }
 
+        beginSelectionDrawing(at: point)
+    }
+
+    private func beginSelectionDrawing(at point: CGPoint) {
+        // 新选区 = 新画布，旧标注作废
+        annotations = []
+        undoStack = []
+        redoStack = []
         dragMode = .drawing
         dragOrigin = point
         selection = CGRect(origin: point, size: .zero)
+        syncToolbar()
         needsDisplay = true
     }
 
     override func mouseDragged(with event: NSEvent) {
         let point = self.point(for: event)
-        magnifierPoint = point
+        if draft != nil {
+            updateDraft(with: point)
+            needsDisplay = true
+            return
+        }
         if let origin = windowPickOrigin {
             let travel = hypot(point.x - origin.x, point.y - origin.y)
             if travel <= 4 {
                 return
             }
             // 拖出去了：从按下的位置重新开始框选
-            dragMode = .drawing
-            dragOrigin = origin
-            selection = CGRect(origin: origin, size: .zero)
+            beginSelectionDrawing(at: origin)
             windowPickOrigin = nil
             windowPickRect = nil
+        }
+        if dragMode != .none {
+            magnifierPoint = point
         }
         switch dragMode {
         case .drawing:
@@ -310,11 +377,20 @@ final class ScreenshotSelectionSurfaceView: NSView {
     }
 
     override func mouseUp(with event: NSEvent) {
+        if draft != nil {
+            commitDraft()
+            return
+        }
         if let _ = windowPickOrigin {
-            // 原地点击 = 整窗选中
+            // 原地点击 = 整窗选中（换选区 = 新画布，旧标注作废）
             windowPickOrigin = nil
             selection = windowPickRect
             windowPickRect = nil
+            annotations = []
+            undoStack = []
+            redoStack = []
+            dragMode = .none
+            syncToolbar()
             needsDisplay = true
             return
         }
@@ -324,24 +400,19 @@ final class ScreenshotSelectionSurfaceView: NSView {
         }
         dragMode = .none
         resizeEdge = .none
+        syncToolbar()
         needsDisplay = true
     }
 
     override func mouseMoved(with event: NSEvent) {
         let point = self.point(for: event)
-        // 选区完成后隐藏放大镜，别挡工具条
+        // 选区完成后隐藏放大镜，别挡工具条和标注
         if selection == nil || dragMode != .none {
             magnifierPoint = point
         } else {
             magnifierPoint = nil
         }
-        if let sel = selection, dragMode == .none {
-            let toolbar = toolbarLayout(for: sel)
-            hoveredToolbarButton = toolbar.cancel.contains(point) ? .cancel : (toolbar.confirm.contains(point) ? .confirm : nil)
-        } else {
-            hoveredToolbarButton = nil
-        }
-        if selection == nil {
+        if selection == nil, activeTool == nil {
             refreshCandidate(at: point)
         }
         needsDisplay = true
@@ -349,17 +420,212 @@ final class ScreenshotSelectionSurfaceView: NSView {
 
     override func mouseExited(with event: NSEvent) {
         magnifierPoint = nil
-        hoveredToolbarButton = nil
         needsDisplay = true
+    }
+
+    // MARK: - Annotation
+
+    private func beginAnnotation(tool: ScreenshotAnnotation.Kind, at point: CGPoint) {
+        switch tool {
+        case .text:
+            beginTextEntry(at: point)
+        case .stepBadge:
+            pushUndo()
+            var badge = ScreenshotAnnotation(kind: .stepBadge, colorIndex: colorIndex, weightIndex: weightIndex, start: point, end: point)
+            badge.text = "\(annotations.filter { $0.kind == .stepBadge }.count + 1)"
+            annotations.append(badge)
+            needsDisplay = true
+            syncToolbar()
+        default:
+            draft = ScreenshotAnnotation(kind: tool, colorIndex: colorIndex, weightIndex: weightIndex, start: point, end: point)
+            if tool == .pen || tool == .highlighter {
+                draft?.points = [point]
+            }
+            needsDisplay = true
+        }
+    }
+
+    private func updateDraft(with point: CGPoint) {
+        guard var d = draft else { return }
+        // 标注不越出选区
+        let clamped = CGPoint(
+            x: min(max(point.x, (selection?.minX ?? 0)), selection?.maxX ?? bounds.width),
+            y: min(max(point.y, (selection?.minY ?? 0)), selection?.maxY ?? bounds.height)
+        )
+        switch d.kind {
+        case .pen, .highlighter:
+            d.points.append(clamped)
+        default:
+            d.end = clamped
+        }
+        draft = d
+    }
+
+    private func commitDraft() {
+        guard let d = draft else { return }
+        draft = nil
+        var annotation = d
+        var keep = false
+        switch d.kind {
+        case .pen, .highlighter:
+            if d.points.count < 2 {
+                annotation.points = [d.start, CGPoint(x: d.start.x + 0.5, y: d.start.y)]
+            }
+            keep = true
+        case .mosaic:
+            let r = d.rect
+            if r.width >= 6, r.height >= 6, let mosaic = makeMosaicImage(for: r) {
+                annotation.mosaicImage = mosaic
+                keep = true
+            }
+        case .arrow:
+            keep = hypot(d.end.x - d.start.x, d.end.y - d.start.y) >= 6
+        default:
+            let r = d.rect
+            keep = r.width >= 4 && r.height >= 4
+        }
+        if keep {
+            pushUndo()
+            annotations.append(annotation)
+        }
+        needsDisplay = true
+        syncToolbar()
+    }
+
+    private func pushUndo() {
+        undoStack.append(annotations)
+        if undoStack.count > 50 { undoStack.removeFirst() }
+        redoStack.removeAll()
+    }
+
+    private func undoAnnotation() {
+        guard let previous = undoStack.popLast() else { return }
+        redoStack.append(annotations)
+        annotations = previous
+        needsDisplay = true
+        syncToolbar()
+    }
+
+    private func redoAnnotation() {
+        guard let next = redoStack.popLast() else { return }
+        undoStack.append(annotations)
+        annotations = next
+        needsDisplay = true
+        syncToolbar()
+    }
+
+    // MARK: - Text entry
+
+    private var textFontSize: CGFloat {
+        AnnotationStyle.fontSize(imageWidth: bounds.width) * AnnotationStyle.textScales[weightIndex]
+    }
+
+    private func beginTextEntry(at point: CGPoint) {
+        finishTextEntry(commit: true)
+        let field = NSTextField(frame: NSRect(
+            x: point.x, y: point.y,
+            width: min(280, max(80, bounds.width - point.x - 8)),
+            height: textFontSize * 1.6
+        ))
+        field.isBordered = false
+        field.drawsBackground = false
+        field.focusRingType = .none
+        field.font = .systemFont(ofSize: textFontSize, weight: .semibold)
+        field.textColor = Self.nsPalette[colorIndex]
+        field.placeholderString = L10n.tr("editor.tool.text")
+        field.delegate = self
+        addSubview(field)
+        textField = field
+        window?.makeFirstResponder(field)
+    }
+
+    private func finishTextEntry(commit: Bool) {
+        guard let field = textField else { return }
+        textField = nil
+        let text = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        let origin = field.frame.origin
+        field.delegate = nil
+        field.removeFromSuperview()
+        if (window?.firstResponder as? NSTextField) === field {
+            window?.makeFirstResponder(self)
+        }
+        if commit, !text.isEmpty {
+            pushUndo()
+            var annotation = ScreenshotAnnotation(kind: .text, colorIndex: colorIndex, weightIndex: weightIndex, start: origin, end: origin)
+            annotation.text = text
+            annotations.append(annotation)
+        }
+        needsDisplay = true
+        syncToolbar()
+    }
+
+    // MARK: - Toolbar
+
+    @objc private func toolbarAction(_ sender: NSButton) {
+        finishTextEntry(commit: true)
+        switch sender.tag {
+        case 1: toggleTool(.rectangle)
+        case 2: toggleTool(.ellipse)
+        case 3: toggleTool(.arrow)
+        case 4: toggleTool(.pen)
+        case 5: toggleTool(.highlighter)
+        case 6: toggleTool(.text)
+        case 7: toggleTool(.stepBadge)
+        case 8: toggleTool(.mosaic)
+        case 101...105:
+            colorIndex = sender.tag - 101
+            needsDisplay = true
+            syncToolbar()
+        case 201...203:
+            weightIndex = sender.tag - 201
+            needsDisplay = true
+            syncToolbar()
+        case 301: undoAnnotation()
+        case 302: redoAnnotation()
+        case 303: saveToFile()
+        case 304: owner?.cancel()
+        case 305: confirm()
+        default: break
+        }
+        window?.makeFirstResponder(self)
+    }
+
+    private func toggleTool(_ kind: ScreenshotAnnotation.Kind) {
+        activeTool = activeTool == kind ? nil : kind
+        needsDisplay = true
+        syncToolbar()
     }
 
     // MARK: - Keyboard
 
     override func keyDown(with event: NSEvent) {
+        if event.modifierFlags.contains(.command) {
+            switch event.charactersIgnoringModifiers {
+            case "z", "Z":
+                if event.modifierFlags.contains(.shift) { redoAnnotation() } else { undoAnnotation() }
+                return
+            case "s":
+                saveToFile()
+                return
+            default:
+                break
+            }
+        }
         switch Int(event.keyCode) {
-        case 53: // Esc 逐层退出：先清选区，再关面板
-            if selection != nil {
+        case 53: // Esc 逐层退出：草稿 → 工具 → 选区 → 面板
+            if draft != nil {
+                draft = nil
+                needsDisplay = true
+            } else if activeTool != nil {
+                activeTool = nil
+                syncToolbar()
+                needsDisplay = true
+            } else if selection != nil {
                 selection = nil
+                annotations = []
+                undoStack = []
+                redoStack = []
+                syncToolbar()
                 needsDisplay = true
             } else {
                 owner?.cancel()
@@ -372,27 +638,98 @@ final class ScreenshotSelectionSurfaceView: NSView {
             let dx: CGFloat = Int(event.keyCode) == 124 ? step : (Int(event.keyCode) == 123 ? -step : 0)
             let dy: CGFloat = Int(event.keyCode) == 125 ? step : (Int(event.keyCode) == 126 ? -step : 0)
             selection = sel.offsetBy(dx: dx, dy: dy).clamped(to: bounds.size)
+            syncToolbar()
             needsDisplay = true
         default:
             super.keyDown(with: event)
         }
     }
 
+    // MARK: - Output
+
     private func confirm() {
-        guard let sel = selection else { return }
+        guard selection != nil, let png = flattenPNG() else { return }
+        owner?.confirmSelection(pngData: png)
+    }
+
+    private func saveToFile() {
+        guard selection != nil, let png = flattenPNG() else { return }
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.png]
+        panel.nameFieldStringValue = "Screenshot.png"
+        panel.canCreateDirectories = true
+        let result = owner?.runSavePanel(panel) ?? panel.runModal()
+        if result == .OK, let url = panel.url {
+            try? png.write(to: url)
+        }
+        window?.makeFirstResponder(self)
+    }
+
+    /// 选区 × 冻结帧 + 全部标注 → 扁平化 PNG（像素级裁剪，标注按点坐标缩放）。
+    func flattenPNG() -> Data? {
+        guard let sel = selection?.integral,
+              let cg = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return nil }
+        let imageBounds = CGRect(x: 0, y: 0, width: CGFloat(cg.width), height: CGFloat(cg.height))
         let pixelRect = CGRect(
-            x: (sel.minX * pixelScale).rounded(.down),
-            y: (sel.minY * pixelScale).rounded(.down),
-            width: (sel.width * pixelScale).rounded(.awayFromZero),
-            height: (sel.height * pixelScale).rounded(.awayFromZero)
-        ).integral
+            x: sel.minX * pixelScale,
+            y: sel.minY * pixelScale,
+            width: sel.width * pixelScale,
+            height: sel.height * pixelScale
+        ).integral.intersection(imageBounds)
         guard pixelRect.width >= 2, pixelRect.height >= 2,
-              let cg = image.cgImage(forProposedRect: nil, context: nil, hints: nil)?.cropping(to: pixelRect) else { return }
-        let out = NSImage(
-            cgImage: cg,
-            size: NSSize(width: pixelRect.width / pixelScale, height: pixelRect.height / pixelScale)
-        )
-        owner?.confirmSelection(image: out)
+              let croppedBase = cg.cropping(to: pixelRect),
+              let ctx = CGContext(
+                data: nil,
+                width: Int(pixelRect.width),
+                height: Int(pixelRect.height),
+                bitsPerComponent: 8,
+                bytesPerRow: 0,
+                space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+              ) else { return nil }
+
+        ctx.translateBy(x: 0, y: CGFloat(pixelRect.height))
+        ctx.scaleBy(x: 1, y: -1) // 翻成左上原点，对齐视图坐标
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(cgContext: ctx, flipped: true)
+        ctx.scaleBy(x: pixelScale, y: pixelScale)
+        ctx.translateBy(x: -sel.minX, y: -sel.minY)
+        NSImage(cgImage: croppedBase, size: sel.size).draw(in: sel)
+        drawAnnotationLayer(imageWidth: bounds.width)
+        NSGraphicsContext.restoreGraphicsState()
+
+        guard let flat = ctx.makeImage() else { return nil }
+        return NSBitmapImageRep(cgImage: flat).representation(using: .png, properties: [:])
+    }
+
+    private func makeMosaicImage(for rect: CGRect) -> NSImage? {
+        guard let cg = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return nil }
+        let imageBounds = CGRect(x: 0, y: 0, width: CGFloat(cg.width), height: CGFloat(cg.height))
+        let pixelRect = CGRect(
+            x: rect.minX * pixelScale, y: rect.minY * pixelScale,
+            width: rect.width * pixelScale, height: rect.height * pixelScale
+        ).integral.intersection(imageBounds)
+        guard pixelRect.width >= 2, pixelRect.height >= 2,
+              let cropped = cg.cropping(to: pixelRect) else { return nil }
+        let block = max(8, min(pixelRect.width, pixelRect.height) / 12)
+        let smallW = max(1, Int(pixelRect.width / block))
+        let smallH = max(1, Int(pixelRect.height / block))
+        guard let small = CGContext(
+            data: nil, width: smallW, height: smallH, bitsPerComponent: 8, bytesPerRow: 0,
+            space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return nil }
+        small.interpolationQuality = .high
+        small.draw(cropped, in: CGRect(x: 0, y: 0, width: smallW, height: smallH))
+        guard let smallImage = small.makeImage(),
+              let big = CGContext(
+                data: nil, width: Int(pixelRect.width), height: Int(pixelRect.height),
+                bitsPerComponent: 8, bytesPerRow: 0,
+                space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+              ) else { return nil }
+        big.interpolationQuality = .none
+        big.draw(smallImage, in: CGRect(x: 0, y: 0, width: pixelRect.width, height: pixelRect.height))
+        guard let mosaicCG = big.makeImage() else { return nil }
+        return NSImage(cgImage: mosaicCG, size: rect.size)
     }
 
     // MARK: - Hit testing
@@ -450,11 +787,6 @@ final class ScreenshotSelectionSurfaceView: NSView {
 
     override func resetCursorRects() {
         addCursorRect(bounds, cursor: .crosshair)
-        if let sel = selection, dragMode == .none {
-            let toolbar = toolbarLayout(for: sel)
-            addCursorRect(toolbar.confirm, cursor: .pointingHand)
-            addCursorRect(toolbar.cancel, cursor: .pointingHand)
-        }
         if let sel = selection {
             let edges: [(ResizeEdge, NSRect, NSCursor)] = [
                 (.topLeft, handleRect(at: sel.origin), .crosshair),
@@ -516,6 +848,14 @@ final class ScreenshotSelectionSurfaceView: NSView {
             drawSizeBadge(for: cand, at: badgeAnchor(for: cand), ctx: ctx)
         }
 
+        // 标注只出现在选区内
+        if let sel, !annotations.isEmpty || draft != nil {
+            ctx.saveGState()
+            ctx.clip(to: sel)
+            drawAnnotationLayer(imageWidth: bounds.width)
+            ctx.restoreGState()
+        }
+
         if let sel {
             // 选区描边 + 8 手柄；拖拽中显示像素徽章，松手后换成工具条
             ctx.setStrokeColor(NSColor.white.cgColor)
@@ -545,10 +885,6 @@ final class ScreenshotSelectionSurfaceView: NSView {
             }
         }
 
-        if let sel, dragMode == .none {
-            drawToolbar(for: sel, ctx: ctx)
-        }
-
         if let point = magnifierPoint {
             drawMagnifier(at: point)
         }
@@ -557,79 +893,6 @@ final class ScreenshotSelectionSurfaceView: NSView {
     private func badgeAnchor(for rect: CGRect) -> CGPoint {
         let below = rect.maxY + 8
         return CGPoint(x: rect.midX, y: below + 20 > bounds.height ? rect.minY - 28 : below)
-    }
-
-    // MARK: - Completion toolbar（钉钉式：松手后选区角落出现 ✓/✕）
-
-    private struct ToolbarLayout {
-        let frame: NSRect
-        let cancel: NSRect
-        let confirm: NSRect
-    }
-
-    private func toolbarLayout(for sel: CGRect) -> ToolbarLayout {
-        let width: CGFloat = 74
-        let height: CGFloat = 40
-        let button: CGFloat = 28
-        var x = sel.maxX - width
-        var y = sel.maxY + 10
-        if y + height > bounds.height {
-            y = sel.minY - 10 - height
-        }
-        x = max(0, min(x, bounds.width - width))
-        let frame = NSRect(x: x, y: y, width: width, height: height)
-        return ToolbarLayout(
-            frame: frame,
-            cancel: NSRect(x: x + 6, y: y + 6, width: button, height: button),
-            confirm: NSRect(x: x + 40, y: y + 6, width: button, height: button)
-        )
-    }
-
-    private func drawToolbar(for sel: CGRect, ctx: CGContext) {
-        let toolbar = toolbarLayout(for: sel)
-        ctx.saveGState()
-        // 阴影偏移在设备空间，向下 = 负 dy
-        ctx.setShadow(offset: CGSize(width: 0, height: -3), blur: 9, color: NSColor.black.withAlphaComponent(0.28).cgColor)
-        let pill = NSBezierPath(roundedRect: toolbar.frame, xRadius: 10, yRadius: 10)
-        NSColor.white.setFill()
-        pill.fill()
-        ctx.setShadow(offset: .zero, blur: 0, color: nil)
-        ctx.setStrokeColor(NSColor.black.withAlphaComponent(0.1).cgColor)
-        ctx.setLineWidth(1)
-        pill.stroke()
-
-        let dingtalkBlue = NSColor(red: 0.086, green: 0.467, blue: 1, alpha: 1)
-        drawToolbarButton(in: toolbar.cancel, background: hoveredToolbarButton == .cancel ? NSColor(white: 0.86, alpha: 1) : NSColor(white: 0.93, alpha: 1), glyph: .cross, ctx: ctx)
-        drawToolbarButton(in: toolbar.confirm, background: hoveredToolbarButton == .confirm ? dingtalkBlue.withAlphaComponent(0.85) : dingtalkBlue, glyph: .check, ctx: ctx)
-        ctx.restoreGState()
-    }
-
-    private enum ToolbarGlyph { case cross, check }
-
-    private func drawToolbarButton(in rect: NSRect, background: NSColor, glyph: ToolbarGlyph, ctx: CGContext) {
-        background.setFill()
-        NSBezierPath(ovalIn: rect).fill()
-        let path = NSBezierPath()
-        path.lineCapStyle = .round
-        path.lineJoinStyle = .round
-        switch glyph {
-        case .cross:
-            let inset: CGFloat = 9.5
-            path.lineWidth = 2
-            path.move(to: CGPoint(x: rect.minX + inset, y: rect.minY + inset))
-            path.line(to: CGPoint(x: rect.maxX - inset, y: rect.maxY - inset))
-            path.move(to: CGPoint(x: rect.maxX - inset, y: rect.minY + inset))
-            path.line(to: CGPoint(x: rect.minX + inset, y: rect.maxY - inset))
-            NSColor(white: 0.42, alpha: 1).setStroke()
-        case .check:
-            path.lineWidth = 2.2
-            // 视图 flipped（+y 向下）：先上左、下探、再上收，渲染出正立 ✓
-            path.move(to: CGPoint(x: rect.minX + 7, y: rect.midY - 2.5))
-            path.line(to: CGPoint(x: rect.minX + 12, y: rect.midY + 4))
-            path.line(to: CGPoint(x: rect.maxX - 7, y: rect.midY - 5))
-            NSColor.white.setStroke()
-        }
-        path.stroke()
     }
 
     private func drawSizeBadge(for rect: CGRect, at anchor: CGPoint, ctx: CGContext) {
@@ -646,6 +909,120 @@ final class ScreenshotSelectionSurfaceView: NSView {
         path.fill()
         (text as NSString).draw(at: CGPoint(x: badge.midX - size.width / 2, y: badge.midY - size.height / 2), withAttributes: attrs)
     }
+
+    // MARK: - Annotation rendering（AppKit 版，预览与扁平化共用）
+
+    private func drawAnnotationLayer(imageWidth: CGFloat) {
+        for annotation in annotations {
+            drawAnnotation(annotation, imageWidth: imageWidth)
+        }
+        if let draft {
+            drawAnnotation(draft, imageWidth: imageWidth)
+        }
+    }
+
+    private func drawAnnotation(_ a: ScreenshotAnnotation, imageWidth: CGFloat) {
+        let stroke = AnnotationStyle.baseStroke(imageWidth: imageWidth) * AnnotationStyle.weights[a.weightIndex]
+        let color = Self.nsPalette[a.colorIndex]
+
+        switch a.kind {
+        case .arrow:
+            let path = NSBezierPath()
+            path.lineWidth = stroke
+            path.lineCapStyle = .round
+            path.lineJoinStyle = .round
+            path.move(to: a.start)
+            path.line(to: a.end)
+            let angle = atan2(a.end.y - a.start.y, a.end.x - a.start.x)
+            let headLength = max(stroke * 3.5, 10)
+            path.move(to: a.end)
+            path.line(to: CGPoint(
+                x: a.end.x - headLength * cos(angle - 0.45),
+                y: a.end.y - headLength * sin(angle - 0.45)
+            ))
+            path.move(to: a.end)
+            path.line(to: CGPoint(
+                x: a.end.x - headLength * cos(angle + 0.45),
+                y: a.end.y - headLength * sin(angle + 0.45)
+            ))
+            color.setStroke()
+            path.stroke()
+
+        case .rectangle:
+            let path = NSBezierPath(rect: a.rect.insetBy(dx: stroke / 2, dy: stroke / 2))
+            path.lineWidth = stroke
+            color.setStroke()
+            path.stroke()
+
+        case .ellipse:
+            let path = NSBezierPath(ovalIn: a.rect.insetBy(dx: stroke / 2, dy: stroke / 2))
+            path.lineWidth = stroke
+            color.setStroke()
+            path.stroke()
+
+        case .pen, .highlighter:
+            let line = a.points.isEmpty ? [a.start, a.end] : a.points
+            guard line.count >= 2 else { break }
+            let path = NSBezierPath()
+            path.lineCapStyle = .round
+            path.lineJoinStyle = .round
+            path.move(to: line[0])
+            for point in line.dropFirst() {
+                path.line(to: point)
+            }
+            if a.kind == .highlighter {
+                // 荧光笔：整条路径一次 stroke，半透明不会因线段交叠而叠深
+                path.lineWidth = stroke * 4
+                color.withAlphaComponent(0.35).setStroke()
+            } else {
+                path.lineWidth = stroke
+                color.setStroke()
+            }
+            path.stroke()
+
+        case .mosaic:
+            if let mosaic = a.mosaicImage {
+                mosaic.draw(in: a.rect)
+            } else {
+                NSColor.gray.withAlphaComponent(0.35).setFill()
+                NSBezierPath(rect: a.rect).fill()
+            }
+
+        case .stepBadge:
+            let radius = AnnotationStyle.badgeRadius(imageWidth: imageWidth) * AnnotationStyle.badgeScales[a.weightIndex]
+            let circle = NSRect(x: a.start.x - radius, y: a.start.y - radius, width: radius * 2, height: radius * 2)
+            color.setFill()
+            NSBezierPath(ovalIn: circle).fill()
+            NSColor.white.setStroke()
+            let ring = NSBezierPath(ovalIn: circle)
+            ring.lineWidth = max(2, stroke * 0.7)
+            ring.stroke()
+            let number = a.text.isEmpty ? "1" : a.text
+            let attrs: [NSAttributedString.Key: Any] = [
+                .font: NSFont.systemFont(ofSize: radius * 1.05, weight: .bold),
+                .foregroundColor: NSColor.white,
+            ]
+            let size = (number as NSString).size(withAttributes: attrs)
+            (number as NSString).draw(at: CGPoint(x: a.start.x - size.width / 2, y: a.start.y - size.height / 2), withAttributes: attrs)
+
+        case .text:
+            let fontSize = AnnotationStyle.fontSize(imageWidth: imageWidth) * AnnotationStyle.textScales[a.weightIndex]
+            let font = NSFont.systemFont(ofSize: fontSize, weight: .semibold)
+            // 阴影 = 底下一层偏移的深色拷贝
+            let shadowAttrs: [NSAttributedString.Key: Any] = [
+                .font: font,
+                .foregroundColor: NSColor.black.withAlphaComponent(0.35),
+            ]
+            (a.text as NSString).draw(at: CGPoint(x: a.start.x + stroke * 0.5, y: a.start.y + stroke * 0.5), withAttributes: shadowAttrs)
+            let attrs: [NSAttributedString.Key: Any] = [
+                .font: font,
+                .foregroundColor: color,
+            ]
+            (a.text as NSString).draw(at: a.start, withAttributes: attrs)
+        }
+    }
+
+    // MARK: - Magnifier
 
     private func drawMagnifier(at point: CGPoint) {
         guard let ctx = NSGraphicsContext.current else { return }
@@ -699,6 +1076,303 @@ final class ScreenshotSelectionSurfaceView: NSView {
         let inner = NSBezierPath(ovalIn: circle.insetBy(dx: 3, dy: 3))
         inner.lineWidth = 1
         inner.stroke()
+    }
+}
+
+// MARK: - Text delegate
+
+extension ScreenshotSelectionSurfaceView: NSTextFieldDelegate {
+    func controlTextDidEndEditing(_ obj: Notification) {
+        finishTextEntry(commit: !textCancelling)
+        textCancelling = false
+    }
+
+    func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+        if commandSelector == #selector(NSResponder.cancelOperation(_:)) {
+            textCancelling = true
+            window?.makeFirstResponder(self)
+            return true
+        }
+        if commandSelector == #selector(NSResponder.insertNewline(_:)) {
+            textCancelling = false
+            window?.makeFirstResponder(self)
+            return true
+        }
+        return false
+    }
+}
+
+// MARK: - Toolbar（浮引式玻璃条）
+
+final class SelectionToolbar: NSVisualEffectView {
+    private var toolButtons: [Int: ToolbarButton] = [:]
+    private var colorButtons: [ToolbarButton] = []
+    private var weightButtons: [ToolbarButton] = []
+    private var undoButton: ToolbarButton!
+    private var redoButton: ToolbarButton!
+
+    init(target: AnyObject, action: Selector) {
+        super.init(frame: .zero)
+        material = .hudWindow
+        blendingMode = .withinWindow
+        state = .active
+        appearance = NSAppearance(named: .darkAqua)
+        wantsLayer = true
+        layer?.cornerRadius = 10
+        layer?.masksToBounds = true
+
+        let stack = NSStackView()
+        stack.orientation = .horizontal
+        stack.alignment = .centerY
+        stack.spacing = 2
+        stack.edgeInsets = NSEdgeInsets(top: 6, left: 8, bottom: 6, right: 8)
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.topAnchor.constraint(equalTo: topAnchor),
+            stack.bottomAnchor.constraint(equalTo: bottomAnchor),
+            stack.leadingAnchor.constraint(equalTo: leadingAnchor),
+            stack.trailingAnchor.constraint(equalTo: trailingAnchor),
+        ])
+
+        let tools: [(Int, String, String)] = [
+            (1, "rectangle", "editor.tool.rectangle"),
+            (2, "circle", "editor.tool.ellipse"),
+            (3, "arrow.up.right", "editor.tool.arrow"),
+            (4, "pencil.tip", "editor.tool.pen"),
+            (5, "highlighter", "editor.tool.highlighter"),
+            (6, "textformat", "editor.tool.text"),
+            (7, "1.circle", "editor.tool.stepBadge"),
+            (8, "square.grid.3x3", "editor.tool.mosaic"),
+        ]
+        for (tag, symbol, key) in tools {
+            let button = ToolbarButton(look: .symbol(symbol), tooltip: L10n.tr(key), target: target, action: action)
+            button.tag = tag
+            button.size = NSSize(width: 28, height: 28)
+            toolButtons[tag] = button
+            stack.addArrangedSubview(button)
+        }
+
+        stack.addArrangedSubview(Self.divider())
+
+        for index in 0..<ScreenshotSelectionSurfaceView.paletteCount {
+            let button = ToolbarButton(look: .color(Self.paletteColor(index)), tooltip: "", target: target, action: action)
+            button.tag = 101 + index
+            button.size = NSSize(width: 22, height: 28)
+            colorButtons.append(button)
+            stack.addArrangedSubview(button)
+        }
+
+        stack.addArrangedSubview(Self.divider())
+
+        for (index, weight) in AnnotationStyle.weights.enumerated() {
+            let button = ToolbarButton(look: .width(weight), tooltip: "", target: target, action: action)
+            button.tag = 201 + index
+            button.size = NSSize(width: 22, height: 28)
+            weightButtons.append(button)
+            stack.addArrangedSubview(button)
+        }
+
+        stack.addArrangedSubview(Self.divider())
+
+        undoButton = ToolbarButton(look: .symbol("arrow.uturn.backward"), tooltip: L10n.tr("editor.undo"), target: target, action: action)
+        undoButton.tag = 301
+        undoButton.size = NSSize(width: 28, height: 28)
+        stack.addArrangedSubview(undoButton)
+
+        redoButton = ToolbarButton(look: .symbol("arrow.uturn.forward"), tooltip: L10n.tr("editor.redo"), target: target, action: action)
+        redoButton.tag = 302
+        redoButton.size = NSSize(width: 28, height: 28)
+        stack.addArrangedSubview(redoButton)
+
+        stack.addArrangedSubview(Self.divider())
+
+        let saveButton = ToolbarButton(look: .symbol("square.and.arrow.down"), tooltip: L10n.tr("editor.saveToFile"), target: target, action: action)
+        saveButton.tag = 303
+        saveButton.size = NSSize(width: 28, height: 28)
+        stack.addArrangedSubview(saveButton)
+
+        stack.addArrangedSubview(Self.divider())
+
+        let cancelButton = ToolbarButton(look: .symbol("xmark"), tooltip: L10n.tr("action.cancel"), target: target, action: action)
+        cancelButton.tag = 304
+        cancelButton.size = NSSize(width: 28, height: 28)
+        stack.addArrangedSubview(cancelButton)
+
+        let confirmButton = ToolbarButton(look: .symbol("checkmark"), tooltip: L10n.tr("action.confirm"), target: target, action: action)
+        confirmButton.tag = 305
+        confirmButton.size = NSSize(width: 28, height: 28)
+        confirmButton.emphasized = true
+        stack.addArrangedSubview(confirmButton)
+    }
+
+    required init?(coder: NSCoder) { fatalError("not used") }
+
+    private static func divider() -> NSView {
+        let line = NSView()
+        line.translatesAutoresizingMaskIntoConstraints = false
+        line.wantsLayer = true
+        line.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.18).cgColor
+        line.widthAnchor.constraint(equalToConstant: 1).isActive = true
+        line.heightAnchor.constraint(equalToConstant: 18).isActive = true
+        return line
+    }
+
+    private static func paletteColor(_ index: Int) -> NSColor {
+        ScreenshotSelectionSurfaceView.paletteColor(index)
+    }
+
+    func update(tool: ScreenshotAnnotation.Kind?, color: Int, weight: Int, canUndo: Bool, canRedo: Bool) {
+        for (tag, button) in toolButtons {
+            button.selectedState = Self.tag(for: tool) == tag
+        }
+        for (index, button) in colorButtons.enumerated() {
+            button.selectedState = index == color
+        }
+        for (index, button) in weightButtons.enumerated() {
+            button.selectedState = index == weight
+        }
+        undoButton.isEnabled = canUndo
+        redoButton.isEnabled = canRedo
+    }
+
+    private static func tag(for tool: ScreenshotAnnotation.Kind?) -> Int? {
+        switch tool {
+        case .rectangle: return 1
+        case .ellipse: return 2
+        case .arrow: return 3
+        case .pen: return 4
+        case .highlighter: return 5
+        case .text: return 6
+        case .stepBadge: return 7
+        case .mosaic: return 8
+        case nil: return nil
+        }
+    }
+}
+
+final class ToolbarButton: NSButton {
+    enum Look {
+        case symbol(String)
+        case color(NSColor)
+        case width(CGFloat)
+    }
+
+    private let look: Look
+    var size: NSSize = NSSize(width: 28, height: 28) {
+        didSet { invalidateIntrinsicContentSize() }
+    }
+    var selectedState = false {
+        didSet { needsDisplay = true }
+    }
+    var emphasized = false
+    private var hovering = false
+
+    init(look: Look, tooltip: String, target: AnyObject?, action: Selector) {
+        self.look = look
+        super.init(frame: .zero)
+        self.toolTip = tooltip.isEmpty ? nil : tooltip
+        self.target = target
+        self.action = action
+        self.isBordered = false
+        self.title = ""
+        self.setButtonType(.momentaryChange)
+        self.refusesFirstResponder = true
+        self.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            widthAnchor.constraint(equalToConstant: size.width),
+            heightAnchor.constraint(equalToConstant: size.height),
+        ])
+    }
+
+    required init?(coder: NSCoder) { fatalError("not used") }
+
+    override var intrinsicContentSize: NSSize { size }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        trackingAreas.forEach(removeTrackingArea)
+        addTrackingArea(NSTrackingArea(
+            rect: bounds,
+            options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+            owner: self
+        ))
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        hovering = true
+        needsDisplay = true
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        hovering = false
+        needsDisplay = true
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let highlight = bounds.insetBy(dx: 1, dy: 2)
+        if selectedState {
+            NSColor.white.withAlphaComponent(0.24).setFill()
+            NSBezierPath(roundedRect: highlight, xRadius: 6, yRadius: 6).fill()
+        } else if hovering, isEnabled {
+            NSColor.white.withAlphaComponent(0.1).setFill()
+            NSBezierPath(roundedRect: highlight, xRadius: 6, yRadius: 6).fill()
+        }
+
+        NSGraphicsContext.current?.cgContext.setAlpha(isEnabled ? 1 : 0.35)
+        switch look {
+        case .symbol(let name):
+            if emphasized {
+                NSColor(red: 0.086, green: 0.467, blue: 1, alpha: 1).setFill()
+                let circle = NSRect(
+                    x: bounds.midX - 12, y: bounds.midY - 12,
+                    width: 24, height: 24
+                )
+                NSBezierPath(ovalIn: circle).fill()
+            }
+            if let symbol = Self.symbolImage(name) {
+                let rect = NSRect(
+                    x: bounds.midX - symbol.size.width / 2,
+                    y: bounds.midY - symbol.size.height / 2,
+                    width: symbol.size.width, height: symbol.size.height
+                )
+                symbol.draw(in: rect)
+            }
+        case .color(let color):
+            let circle = NSRect(x: bounds.midX - 6, y: bounds.midY - 6, width: 12, height: 12)
+            color.setFill()
+            NSBezierPath(ovalIn: circle).fill()
+            if selectedState {
+                NSColor.white.setStroke()
+                let ring = NSBezierPath(ovalIn: circle.insetBy(dx: -2.5, dy: -2.5))
+                ring.lineWidth = 1.5
+                ring.stroke()
+            }
+        case .width(let width):
+            NSColor.white.setStroke()
+            let line = NSBezierPath()
+            line.lineWidth = width
+            line.lineCapStyle = .round
+            line.move(to: CGPoint(x: bounds.midX - 6, y: bounds.midY))
+            line.line(to: CGPoint(x: bounds.midX + 6, y: bounds.midY))
+            line.stroke()
+        }
+        NSGraphicsContext.current?.cgContext.setAlpha(1)
+    }
+
+    private static func symbolImage(_ name: String) -> NSImage? {
+        guard let base = NSImage(systemSymbolName: name, accessibilityDescription: nil) else { return nil }
+        let config = NSImage.SymbolConfiguration(pointSize: 13, weight: .medium)
+            .applying(.init(paletteColors: [.white]))
+        return base.withSymbolConfiguration(config) ?? base
+    }
+}
+
+extension ScreenshotSelectionSurfaceView {
+    static let paletteCount = 5
+
+    static func paletteColor(_ index: Int) -> NSColor {
+        nsPalette[min(max(index, 0), nsPalette.count - 1)]
     }
 }
 
