@@ -142,6 +142,7 @@ final class ScreenshotSelectionSurfaceView: NSView {
     /// 高亮工具的水印文字（参考图面板里的「最多输入 16 个字符」）；非空时点按落一段半透明文字。
     private var highlighterText = ""
     private var draft: ScreenshotAnnotation?
+    private var lastMosaicPreviewTime: TimeInterval = 0
     private var textField: NSTextField?
     private var textCancelling = false
     private var chipView: NSView?
@@ -512,6 +513,14 @@ final class ScreenshotSelectionSurfaceView: NSView {
         switch d.kind {
         case .pen, .highlighter:
             d.points.append(clamped)
+        case .mosaic:
+            d.end = clamped
+            let r = d.rect
+            let now = ProcessInfo.processInfo.systemUptime
+            if r.width >= 6, r.height >= 6, now - lastMosaicPreviewTime >= 0.06 {
+                lastMosaicPreviewTime = now
+                d.mosaicImage = makeMosaicImage(for: r)
+            }
         default:
             d.end = clamped
         }
@@ -902,24 +911,34 @@ final class ScreenshotSelectionSurfaceView: NSView {
         ).integral.intersection(imageBounds)
         guard pixelRect.width >= 2, pixelRect.height >= 2,
               let cropped = cg.cropping(to: pixelRect) else { return nil }
-        let block = max(8, min(pixelRect.width, pixelRect.height) / 12)
-        let smallW = max(1, Int(pixelRect.width / block))
-        let smallH = max(1, Int(pixelRect.height / block))
+
+        let width = Int(pixelRect.width)
+        let height = Int(pixelRect.height)
+        // 块 = 短边 1/10（至少 10pt，按屏幕像素密度换算）：块太小字还认得出，太大又看不出内容；
+        // 网格按整块取整，放大后每块严格等大，不会出现宽窄不一的条纹
+        let block = max(Int((10 * pixelScale).rounded()), min(width, height) / 10)
+        let smallW = max(1, (width + block - 1) / block)
+        let smallH = max(1, (height + block - 1) / block)
+        let canvasW = smallW * block
+        let canvasH = smallH * block
+
         guard let small = CGContext(
             data: nil, width: smallW, height: smallH, bitsPerComponent: 8, bytesPerRow: 0,
             space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
         ) else { return nil }
+        // 高质量缩小 = 区域滤波，每块颜色接近真实平均值，不留噪点
         small.interpolationQuality = .high
         small.draw(cropped, in: CGRect(x: 0, y: 0, width: smallW, height: smallH))
         guard let smallImage = small.makeImage(),
               let big = CGContext(
-                data: nil, width: Int(pixelRect.width), height: Int(pixelRect.height),
+                data: nil, width: canvasW, height: canvasH,
                 bitsPerComponent: 8, bytesPerRow: 0,
                 space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
               ) else { return nil }
         big.interpolationQuality = .none
-        big.draw(smallImage, in: CGRect(x: 0, y: 0, width: pixelRect.width, height: pixelRect.height))
-        guard let mosaicCG = big.makeImage() else { return nil }
+        big.draw(smallImage, in: CGRect(x: 0, y: 0, width: canvasW, height: canvasH))
+        guard let padded = big.makeImage(),
+              let mosaicCG = padded.cropping(to: CGRect(x: 0, y: 0, width: width, height: height)) else { return nil }
         return NSImage(cgImage: mosaicCG, size: rect.size)
     }
 
@@ -1838,6 +1857,7 @@ final class ToolbarButton: NSButton {
         didSet { needsDisplay = true }
     }
     private var hovering = false
+    private var hoverTrackingArea: NSTrackingArea?
 
     init(look: Look, tooltip: String, target: AnyObject?, action: Selector) {
         self.look = look
@@ -1862,12 +1882,15 @@ final class ToolbarButton: NSButton {
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
-        trackingAreas.forEach(removeTrackingArea)
-        addTrackingArea(NSTrackingArea(
+        // 只替换自己的 hover 区域；清空全部会连 AppKit 的 toolTip 追踪区一起删掉，提示就不弹了
+        if let hoverTrackingArea { removeTrackingArea(hoverTrackingArea) }
+        let area = NSTrackingArea(
             rect: bounds,
             options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
             owner: self
-        ))
+        )
+        addTrackingArea(area)
+        hoverTrackingArea = area
     }
 
     override func mouseEntered(with event: NSEvent) {
@@ -1912,14 +1935,20 @@ final class ToolbarButton: NSButton {
             path.lineWidth = 1
             path.stroke()
             if selectedState {
-                NSColor.white.setStroke()
+                // 浅色块（白/黄/灰）用深勾，否则勾看不见
+                var luminance: CGFloat = 0
+                if let rgb = color.usingColorSpace(.sRGB) {
+                    luminance = 0.299 * rgb.redComponent + 0.587 * rgb.greenComponent + 0.114 * rgb.blueComponent
+                }
+                (luminance > 0.7 ? NSColor.black.withAlphaComponent(0.75) : NSColor.white).setStroke()
                 let check = NSBezierPath()
                 check.lineWidth = 2
                 check.lineCapStyle = .round
                 check.lineJoinStyle = .round
-                check.move(to: CGPoint(x: swatch.minX + 4, y: swatch.midY - 0.5))
-                check.line(to: CGPoint(x: swatch.minX + 7.5, y: swatch.midY - 4))
-                check.line(to: CGPoint(x: swatch.maxX - 4, y: swatch.midY + 4))
+                // 绘制上下文是 flipped（y 向下），左起点在上、拐点在下方、右上收尾才是正 ✓
+                check.move(to: CGPoint(x: swatch.minX + 4, y: swatch.midY - 1))
+                check.line(to: CGPoint(x: swatch.minX + 7.5, y: swatch.midY + 3.5))
+                check.line(to: CGPoint(x: swatch.maxX - 4, y: swatch.midY - 4))
                 check.stroke()
             }
         case .arrowStyle(let index):
