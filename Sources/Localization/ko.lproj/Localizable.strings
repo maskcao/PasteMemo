@@ -153,6 +153,12 @@
 "editor.pin.done" = "화면에 고정했습니다";
 "editor.pin.close" = "고정 이미지 닫기";
 "editor.tool.crop" = "자르기";
+"editor.tool.shape" = "도형";
+"editor.more" = "더 보기";
+"editor.size.small" = "작게";
+"editor.size.medium" = "보통";
+"editor.size.large" = "크게";
+"editor.size.theme" = "테마";
 "editor.undo" = "실행 취소";
 "editor.redo" = "다시 실행";
 "action.assignGroup" = "그룹에 할당";
@@ -552,9 +558,7 @@
 "relay.collapse" = "접기";
 "relay.content.truncated" = "…(내용이 너무 커서 잘렸습니다)";
 "relay.alert.title" = "릴레이 모드 활성화됨";
-"relay.alert.message" = "빠른 붙여넣기가 일시 정지되었습니다. 복사한 내용은 릴레이 대기열에 추가됩니다.
-
-%@를 눌러 하나씩 붙여넣으세요.";
+"relay.alert.message" = "빠른 붙여넣기가 일시 정지되었습니다. 복사한 내용은 릴레이 대기열에 추가됩니다.\n\n%@를 눌러 하나씩 붙여넣으세요.";
 "relay.alert.ok" = "확인";
 "relay.alert.dontShowAgain" = "다시 표시하지 않기";
 "relay.settings.pasteKey" = "릴레이 붙여넣기 단축키";
@@ -1254,3 +1258,16 @@
 "merge.undo.toast" = "%d개를 병합함";
 "rule.undo.toast" = "“%@” 실행함";
 "edit.undo.toast" = "저장됨";
+
+// 长截图（对齐 FloGravity 截图模块）
+"capture.mode.screenshot" = "스크린샷";
+"capture.mode.long" = "긴 스크린샷";
+"capture.long.start" = "캡처 시작";
+"capture.long.finish" = "완료";
+"capture.long.autoscroll" = "자동 스크롤";
+"capture.long.capturing" = "페이지를 스크롤하면 자동으로 이어 붙습니다…";
+"capture.long.height" = "%lld px 연결됨";
+"capture.long.bottom" = "끝에 도달함 — 완료를 클릭하세요";
+"capture.long.copied" = "긴 스크린샷이 복사되었습니다";
+"capture.long.preview" = "긴 스크린샷 미리보기";
+"capture.long.failed" = "긴 스크린샷에 실패했습니다";

@@ -298,6 +298,12 @@
 "editor.pin.done" = "Закреплено на экране";
 "editor.pin.close" = "Закрыть закреплённое изображение";
 "editor.tool.crop" = "Обрезать";
+"editor.tool.shape" = "Фигура";
+"editor.more" = "Ещё";
+"editor.size.small" = "Малый";
+"editor.size.medium" = "Средний";
+"editor.size.large" = "Большой";
+"editor.size.theme" = "Тема";
 "editor.undo" = "Отменить";
 "editor.redo" = "Вернуть";
 "action.assignGroup" = "Назначить группу";
@@ -649,9 +655,7 @@
 "relay.collapse" = "Свернуть";
 "relay.content.truncated" = "…(содержимое слишком большое, обрезано)";
 "relay.alert.title" = "Режим Эстафеты активирован";
-"relay.alert.message" = "Быстрая вставка приостановлена. Скопированное содержимое будет добавлено в очередь.
-
-Используйте %@ для вставки по одному.";
+"relay.alert.message" = "Быстрая вставка приостановлена. Скопированное содержимое будет добавлено в очередь.\n\nИспользуйте %@ для вставки по одному.";
 "relay.alert.ok" = "Понятно";
 "relay.alert.dontShowAgain" = "Больше не показывать";
 "relay.settings.pasteKey" = "Горячая клавиша вставки";
@@ -1226,3 +1230,16 @@
 "merge.undo.toast" = "Объединено элементов: %d";
 "rule.undo.toast" = "Выполнено «%@»";
 "edit.undo.toast" = "Сохранено";
+
+// 长截图（对齐 FloGravity 截图模块）
+"capture.mode.screenshot" = "Снимок";
+"capture.mode.long" = "Длинный снимок";
+"capture.long.start" = "Начать съёмку";
+"capture.long.finish" = "Готово";
+"capture.long.autoscroll" = "Автопрокрутка";
+"capture.long.capturing" = "Прокручивайте страницу — склейка выполняется автоматически…";
+"capture.long.height" = "Склеено %lld px";
+"capture.long.bottom" = "Достигнут конец страницы — нажмите «Готово»";
+"capture.long.copied" = "Длинный снимок скопирован";
+"capture.long.preview" = "Предпросмотр длинного снимка";
+"capture.long.failed" = "Не удалось создать длинный снимок";

@@ -2,6 +2,39 @@ import AppKit
 import CoreGraphics
 import UniformTypeIdentifiers
 
+/// 采集模式，对齐 FloGravity 的选区类型切换（Tab）：普通截图 / 滚动长截图。
+enum CaptureMode {
+    case screenshot
+    case longCapture
+}
+
+/// 长截图滚动捕获的会话状态。进入捕获后选区面板整体隐藏（点击穿透 + 透明），
+/// 只留 HUD 浮窗，帧采集与拼接都围绕这个会话进行。
+final class LongCaptureSessionState {
+    let stitcher: LongScreenshotStitcher
+    /// 本屏显示像素空间（CGImage 空间，左上原点）的捕获区域
+    let pixelRect: CGRect
+    var timer: Timer?
+    var hud: LongCaptureHUD?
+    /// 连续无新增内容的帧数，达到阈值提示「已滚动到底」
+    var noAddStreak = 0
+
+    init(stitcher: LongScreenshotStitcher, pixelRect: CGRect) {
+        self.stitcher = stitcher
+        self.pixelRect = pixelRect
+    }
+
+    func stopTimer() {
+        timer?.invalidate()
+        timer = nil
+    }
+
+    func closeHUD() {
+        hud?.close()
+        hud = nil
+    }
+}
+
 /// 浮引式自绘框选：触发热键后逐屏开全屏透明面板，先用 CGDisplayCreateImage 冻结当前画面，
 /// 之后的框选/标注都在冻结帧上做——不存在「截到自己的遮罩」的问题。
 /// 标注工具条挂在选区下方（浮引同款玻璃条），确认后扁平化直接进剪贴板，不再弹独立编辑器窗口。
@@ -71,9 +104,27 @@ final class ScreenshotSelectionController: NSObject {
         return result
     }
 
+    /// 长截图滚动期间隐藏全部选区面板（透明 + 点击穿透），完成后恢复。
+    func setPanelsHidden(_ hidden: Bool) {
+        panels.forEach { panel in
+            panel.alphaValue = hidden ? 0 : 1
+            panel.ignoresMouseEvents = hidden
+        }
+    }
+
+    /// 长截图完成：直接收起整套框选 UI（预览窗自行展示）。
+    func finishLongSession() {
+        closeAll()
+    }
+
     private func closeAll() {
         ToolbarButton.dismissHoverTip()
-        panels.forEach { $0.orderOut(nil) }
+        panels.forEach {
+            ($0.contentView as? ScreenshotSelectionSurfaceView)?.abortLongCaptureIfNeeded()
+            $0.alphaValue = 1
+            $0.ignoresMouseEvents = false
+            $0.orderOut(nil)
+        }
         panels.removeAll()
         isActive = false
         if !UserDefaults.standard.bool(forKey: "hideDockIcon") {
@@ -128,13 +179,26 @@ final class ScreenshotSelectionSurfaceView: NSView {
     var magnifierPoint: CGPoint?
     var annotations: [ScreenshotAnnotation] = []
 
+    /// 采集模式（对齐 FloGravity：Tab 在模式间切换；长截图与截图共用选区交互）
+    var captureMode: CaptureMode = .screenshot
+
     private var undoStack: [[ScreenshotAnnotation]] = []
     private var redoStack: [[ScreenshotAnnotation]] = []
     private var activeTool: ScreenshotAnnotation.Kind?
+
+    // MARK: - 长截图会话
+
+    /// 长截图进行中的会话状态；非 nil 表示正在滚动捕获
+    var longSession: LongCaptureSessionState?
+    private var autoScrollEnabled = false
+    /// 形状按钮记住上一次选的形状（矩形/椭圆），面板里的下拉也能改。
+    private var shapeKind: ScreenshotAnnotation.Kind = .rectangle
     private var colorIndex = 0
     private var weightIndex = 1
     /// 二级面板的可调参数：线宽倍率 / 荧光笔透明度 / 马赛克透明度 / 箭头样式 / 马赛克形状 / 字号
     private var strokeScale: CGFloat = 1.8
+    /// 线宽预设：0 小 / 1 中 / 2 大 / 3 跟随主题（对应 0.9 / 1.8 / 2.8 / 1.8）
+    private var widthPreset = 1
     private var highlighterOpacity: CGFloat = 0.5
     private var mosaicOpacity: CGFloat = 1.0
     private var arrowStyle = 1
@@ -168,15 +232,17 @@ final class ScreenshotSelectionSurfaceView: NSView {
     private let magnifierZoom: CGFloat = 8
     private let handleSize: CGFloat = 9
 
+    /// FloGravity 色板：红 / 绿 / 蓝 / 紫 / 白 / 黑 / 跟随主题 / 自定义
     private static let nsPalette: [NSColor] = [
         NSColor(red: 1.00, green: 0.27, blue: 0.23, alpha: 1),
-        NSColor(red: 1.00, green: 0.80, blue: 0.00, alpha: 1),
-        NSColor(red: 0.00, green: 0.48, blue: 1.00, alpha: 1),
         NSColor(red: 0.20, green: 0.78, blue: 0.35, alpha: 1),
-        NSColor(red: 0.10, green: 0.10, blue: 0.12, alpha: 1),
-        NSColor(red: 0.56, green: 0.56, blue: 0.58, alpha: 1),
+        NSColor(red: 0.00, green: 0.48, blue: 1.00, alpha: 1),
+        NSColor(red: 0.68, green: 0.32, blue: 0.88, alpha: 1),
         NSColor.white,
+        NSColor(red: 0.10, green: 0.10, blue: 0.12, alpha: 1),
+        NSColor(red: 0.10, green: 0.10, blue: 0.12, alpha: 1),
     ]
+    static var customPaletteColor = NSColor(red: 0.68, green: 0.32, blue: 0.88, alpha: 1)
 
     init(frame: NSRect, image: NSImage, pixelScale: CGFloat, screen: NSScreen, owner: ScreenshotSelectionController) {
         self.image = image
@@ -244,6 +310,7 @@ final class ScreenshotSelectionSurfaceView: NSView {
 
     private func syncToolbar() {
         toolbar.update(
+            mode: captureMode,
             tool: activeTool,
             canUndo: !undoStack.isEmpty,
             canRedo: !redoStack.isEmpty,
@@ -251,8 +318,10 @@ final class ScreenshotSelectionSurfaceView: NSView {
         )
         optionsBar.configure(
             tool: activeTool,
+            shapeKind: shapeKind,
             colorIndex: colorIndex,
             strokeScale: strokeScale,
+            widthPreset: widthPreset,
             opacity: highlighterOpacity,
             mosaicOpacity: mosaicOpacity,
             arrowStyle: arrowStyle,
@@ -343,7 +412,12 @@ final class ScreenshotSelectionSurfaceView: NSView {
                     return
                 }
                 if event.clickCount >= 2 {
-                    confirm()
+                    // 截图模式双击确认；长截图模式双击开始滚动捕获（对齐 FloGravity「双击开始长截图」）
+                    if captureMode == .longCapture {
+                        startLongCapture()
+                    } else {
+                        confirm()
+                    }
                     return
                 }
                 // 指针模式：拖动选区平移
@@ -596,7 +670,7 @@ final class ScreenshotSelectionSurfaceView: NSView {
         field.drawsBackground = false
         field.focusRingType = .none
         field.font = .systemFont(ofSize: textFontSize, weight: .semibold)
-        field.textColor = Self.nsPalette[colorIndex]
+        field.textColor = Self.paletteColor(colorIndex)
         field.placeholderString = L10n.tr("editor.tool.text")
         field.delegate = self
         addSubview(field)
@@ -646,6 +720,21 @@ final class ScreenshotSelectionSurfaceView: NSView {
             return
         }
 
+        if let item = sender as? NSMenuItem {
+            // More 菜单与形状下拉
+            switch item.tag {
+            case 5: toggleTool(.mosaic)
+            case 8: toggleTool(.highlighter)
+            case 601: shapeKind = .rectangle; activeTool = .rectangle
+            case 602: shapeKind = .ellipse; activeTool = .ellipse
+            default: return
+            }
+            needsDisplay = true
+            syncToolbar()
+            window?.makeFirstResponder(self)
+            return
+        }
+
         guard let control = sender as? NSControl else { return }
 
         if let slider = control as? NSSlider {
@@ -665,20 +754,49 @@ final class ScreenshotSelectionSurfaceView: NSView {
         }
 
         switch control.tag {
+        case 20:
+            switchCaptureMode(.screenshot)
+        case 21:
+            switchCaptureMode(.longCapture)
+        case 12:
+            startLongCapture()
         case 0:
-            activeTool = nil
-        case 1: toggleTool(.rectangle)
-        case 2: toggleTool(.ellipse)
-        case 3: toggleTool(.arrow)
-        case 4: toggleTool(.pen)
-        case 5: toggleTool(.mosaic)
-        case 6: toggleTool(.text)
-        case 7: toggleTool(.stepBadge)
-        case 8: toggleTool(.highlighter)
-        case 9: extractText()
-        case 10: pinSelection()
-        case 101...107:
+            if captureMode == .screenshot { activeTool = nil }
+        case 1:
+            guard captureMode == .screenshot else { break }
+            if activeTool == .rectangle || activeTool == .ellipse {
+                activeTool = nil
+            } else {
+                activeTool = shapeKind
+            }
+        case 11:
+            if captureMode == .screenshot { showMoreMenu(from: control) }
+        case 2: if captureMode == .screenshot { toggleTool(.ellipse) }
+        case 3: if captureMode == .screenshot { toggleTool(.arrow) }
+        case 4: if captureMode == .screenshot { toggleTool(.pen) }
+        case 5: if captureMode == .screenshot { toggleTool(.mosaic) }
+        case 6: if captureMode == .screenshot { toggleTool(.text) }
+        case 7: if captureMode == .screenshot { toggleTool(.stepBadge) }
+        case 8: if captureMode == .screenshot { toggleTool(.highlighter) }
+        case 9: if captureMode == .screenshot { extractText() }
+        case 10: if captureMode == .screenshot { pinSelection() }
+        case 511...514:
+            widthPreset = control.tag - 511
+            strokeScale = [0.9, 1.8, 2.8, 1.8][widthPreset]
+        case 101...106:
             colorIndex = control.tag - 101
+            needsDisplay = true
+            syncToolbar()
+        case 107:
+            colorIndex = 6
+            needsDisplay = true
+            syncToolbar()
+        case 108:
+            colorIndex = 7
+            NSColorPanel.shared.setTarget(self)
+            NSColorPanel.shared.setAction(#selector(customColorPicked(_:)))
+            NSColorPanel.shared.color = Self.customPaletteColor
+            NSColorPanel.shared.orderFront(nil)
             needsDisplay = true
             syncToolbar()
         case 401...403:
@@ -690,6 +808,7 @@ final class ScreenshotSelectionSurfaceView: NSView {
             needsDisplay = true
             syncToolbar()
         case 301: undoAnnotation()
+        case 306: redoAnnotation()
         case 302: copySelection()
         case 303: saveToFile()
         case 304: owner?.cancel()
@@ -705,6 +824,149 @@ final class ScreenshotSelectionSurfaceView: NSView {
         activeTool = activeTool == kind ? nil : kind
         needsDisplay = true
         syncToolbar()
+    }
+
+    /// FloGravity 的 More：折叠次要标注工具。
+    private func showMoreMenu(from control: NSControl) {
+        let menu = NSMenu()
+        let entries: [(Int, String, ScreenshotAnnotation.Kind)] = [
+            (5, "editor.tool.mosaic", .mosaic),
+            (8, "editor.tool.highlighter", .highlighter),
+        ]
+        for (tag, key, kind) in entries {
+            let item = NSMenuItem(title: L10n.tr(key), action: #selector(toolbarAction(_:)), keyEquivalent: "")
+            item.target = self
+            item.tag = tag
+            item.state = activeTool == kind ? .on : .off
+            menu.addItem(item)
+        }
+        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: control.bounds.maxY + 4), in: control)
+    }
+
+    @objc private func customColorPicked(_ sender: NSColorPanel) {
+        Self.customPaletteColor = sender.color
+        colorIndex = 7
+        needsDisplay = true
+        syncToolbar()
+    }
+
+    // MARK: - Long capture（对齐 FloGravity 长截图：框选 → 滚动自动拼接 → 预览复制/保存）
+
+    private func switchCaptureMode(_ mode: CaptureMode) {
+        guard longSession == nil, captureMode != mode else { return }
+        captureMode = mode
+        activeTool = nil
+        draft = nil
+        needsDisplay = true
+        syncToolbar()
+    }
+
+    /// 隐藏选区面板，露出真实屏幕内容供滚动（HUD 在捕获区域外，不会入镜）。
+    private func captureDisplayImage(for rect: CGRect) -> CGImage? {
+        guard let displayID = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID,
+              let cg = CGDisplayCreateImage(displayID) else { return nil }
+        let displayBounds = CGRect(x: 0, y: 0, width: cg.width, height: cg.height)
+        let crop = rect.intersection(displayBounds)
+        guard abs(crop.width - rect.width) < 1, abs(crop.height - rect.height) < 1 else { return nil }
+        return cg.cropping(to: crop)
+    }
+
+    private func startLongCapture() {
+        guard selection != nil, longSession == nil else { return }
+        finishTextEntry(commit: true)
+        activeTool = nil
+        draft = nil
+
+        let sel = selection!.integral
+        let pixelRect = CGRect(
+            x: sel.minX * pixelScale, y: sel.minY * pixelScale,
+            width: sel.width * pixelScale, height: sel.height * pixelScale
+        ).integral
+        // 先把面板藏掉再抓首帧，避免遮罩入镜
+        owner?.setPanelsHidden(true)
+        guard let first = captureDisplayImage(for: pixelRect) else {
+            owner?.setPanelsHidden(false)
+            showChip(L10n.tr("capture.long.failed"))
+            return
+        }
+        let stitcher = LongScreenshotStitcher(pixelWidth: first.width)
+        stitcher.append(first)
+        let session = LongCaptureSessionState(stitcher: stitcher, pixelRect: pixelRect)
+        longSession = session
+
+        let hud = LongCaptureHUD(
+            regionRect: sel, screen: screen,
+            onFinish: { [weak self] in self?.finishLongCapture() },
+            onCancel: { [weak self] in self?.cancelLongCapture() },
+            onAutoscroll: { [weak self] enabled in self?.autoScrollEnabled = enabled }
+        )
+        hud.showPanel()
+        session.hud = hud
+
+        let timer = Timer(timeInterval: 0.35, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.longTick() }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        session.timer = timer
+        needsDisplay = true
+    }
+
+    private func longTick() {
+        guard let session = longSession else { return }
+        guard let frame = captureDisplayImage(for: session.pixelRect) else { return }
+        guard let result = session.stitcher.append(frame) else { return }
+        if result.atBottom {
+            session.noAddStreak += 1
+        } else {
+            session.noAddStreak = 0
+        }
+        let atBottom = session.noAddStreak >= 4
+        session.hud?.update(height: result.totalRows, atBottom: atBottom)
+        if autoScrollEnabled, !atBottom {
+            postScrollTick()
+        }
+    }
+
+    /// 自动滚动：向前台窗口发送滚轮事件（需要辅助功能权限，缺权限时静默失败）。
+    private func postScrollTick() {
+        guard let event = CGEvent(
+            scrollWheelEvent2Source: nil, units: .line, wheelCount: 1,
+            wheel1: -3, wheel2: 0, wheel3: 0
+        ) else { return }
+        event.post(tap: .cghidEventTap)
+    }
+
+    private func finishLongCapture() {
+        guard let session = longSession else { return }
+        teardownLongSession()
+        owner?.setPanelsHidden(false)
+        guard let image = session.stitcher.makeImage(),
+              let png = NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:]) else {
+            showChip(L10n.tr("capture.long.failed"))
+            return
+        }
+        owner?.finishLongSession()
+        LongCapturePreview.present(pngData: png)
+    }
+
+    private func cancelLongCapture() {
+        guard longSession != nil else { return }
+        teardownLongSession()
+        owner?.setPanelsHidden(false)
+        needsDisplay = true
+    }
+
+    private func teardownLongSession() {
+        guard let session = longSession else { return }
+        session.stopTimer()
+        session.closeHUD()
+        autoScrollEnabled = false
+        longSession = nil
+    }
+
+    /// 面板被外部关闭（Esc / 取消）时中断滚动捕获。
+    func abortLongCaptureIfNeeded() {
+        teardownLongSession()
     }
 
     // MARK: - Keyboard
@@ -726,6 +988,10 @@ final class ScreenshotSelectionSurfaceView: NSView {
             }
         }
         switch Int(event.keyCode) {
+        case 48: // Tab 切换选区类型（截图 ↔ 长截图）
+            if longSession == nil {
+                switchCaptureMode(captureMode == .screenshot ? .longCapture : .screenshot)
+            }
         case 53: // Esc 逐层退出：草稿 → 工具 → 选区 → 面板
             if draft != nil {
                 draft = nil
@@ -744,8 +1010,16 @@ final class ScreenshotSelectionSurfaceView: NSView {
             } else {
                 owner?.cancel()
             }
-        case 36, 76: // Return / keypad Enter 确认
-            if selection != nil { confirm() }
+        case 36, 76: // Return / keypad Enter：截图确认；长截图开始/完成
+            if longSession != nil {
+                finishLongCapture()
+            } else if selection != nil {
+                if captureMode == .longCapture {
+                    startLongCapture()
+                } else {
+                    confirm()
+                }
+            }
         case 123, 124, 125, 126: // 方向键微调 1pt，Shift 10pt
             guard let sel = selection else { return }
             let step: CGFloat = event.modifierFlags.contains(.shift) ? 10 : 1
@@ -1135,7 +1409,7 @@ final class ScreenshotSelectionSurfaceView: NSView {
     private func drawAnnotation(_ a: ScreenshotAnnotation, imageWidth: CGFloat) {
         let weight = a.strokeScale > 0 ? a.strokeScale : AnnotationStyle.weights[a.weightIndex]
         let stroke = AnnotationStyle.baseStroke(imageWidth: imageWidth) * weight
-        let color = Self.nsPalette[a.colorIndex]
+        let color = Self.paletteColor(a.colorIndex)
 
         switch a.kind {
         case .arrow:
@@ -1360,10 +1634,16 @@ extension ScreenshotSelectionSurfaceView: NSTextFieldDelegate {
 final class SelectionToolbar: NSVisualEffectView {
     private var toolButtons: [Int: ToolbarButton] = [:]
     private var undoButton: ToolbarButton!
+    private var redoButton: ToolbarButton!
     private var copyButton: ToolbarButton!
     private var saveButton: ToolbarButton!
     private var ocrButton: ToolbarButton!
     private var pinButton: ToolbarButton!
+    private var shapeButton: ToolbarButton!
+    private var currentShapeAsset = "Shape"
+    private var modeScreenshotButton: ToolbarButton!
+    private var modeLongButton: ToolbarButton!
+    private var startLongButton: ToolbarButton!
 
     init(target: AnyObject, action: Selector) {
         super.init(frame: .zero)
@@ -1415,26 +1695,34 @@ final class SelectionToolbar: NSVisualEffectView {
             add(tag, .symbol(symbol), tooltip)
         }
 
-        _ = add(0, .pointerGlyph, L10n.tr("editor.tool.pointer"))
-        stack.addArrangedSubview(Self.divider())
-        _ = add(1, .rectangleGlyph, L10n.tr("editor.tool.rectangle"))
-        _ = add(2, "circle", L10n.tr("editor.tool.ellipse"))
-        _ = add(3, .arrowGlyph, L10n.tr("editor.tool.arrow"))
-        _ = add(4, .pencilGlyph, L10n.tr("editor.tool.pen"))
-        _ = add(5, .mosaicGlyph, L10n.tr("editor.tool.mosaic"))
-        _ = add(6, .textGlyph, L10n.tr("editor.tool.text"))
-        stack.addArrangedSubview(Self.divider())
-        _ = add(7, .badgeGlyph, L10n.tr("editor.tool.stepBadge"))
-        _ = add(8, .highlightGlyph, L10n.tr("editor.tool.highlighter"))
-        ocrButton = add(9, .ocrGlyph, L10n.tr("editor.tool.ocr"))
-        pinButton = add(10, .pinGlyph, L10n.tr("editor.tool.pin"))
+        // 左侧模式切换（对齐 FloGravity「左侧切换模式」）：截图 / 长截图，Tab 也能切换
+        modeScreenshotButton = add(20, .asset("Annotation"), L10n.tr("capture.mode.screenshot"))
+        modeLongButton = add(21, .asset("LongCapture"), L10n.tr("capture.mode.long"))
         stack.addArrangedSubview(Self.divider())
 
-        undoButton = add(301, "arrow.uturn.backward", L10n.tr("editor.undo"))
-        copyButton = add(302, "arrow.up.right.square", L10n.tr("editor.copy"))
-        saveButton = add(303, "tray.and.arrow.down", L10n.tr("editor.saveToFile"))
-        _ = add(304, "xmark", L10n.tr("action.cancel"))
-        _ = add(305, "checkmark", L10n.tr("action.confirm"))
+        // 顺序对齐 FloGravity 6.3.10：批注 / 序号 / 形状 / 箭头 / 文字 / 画笔 / 更多
+        // | 文字识别 | 撤销 / 重做 / 保存 / 钉图 / 复制 / 关闭 / 完成
+        _ = add(0, .asset("Remark"), L10n.tr("editor.tool.pointer"))
+        stack.addArrangedSubview(Self.divider())
+        _ = add(7, .asset("Callout"), L10n.tr("editor.tool.stepBadge"))
+        shapeButton = add(1, .asset("Shape"), L10n.tr("editor.tool.rectangle"))
+        _ = add(3, .asset("Arrow"), L10n.tr("editor.tool.arrow"))
+        _ = add(6, .asset("Text"), L10n.tr("editor.tool.text"))
+        _ = add(4, .asset("Brush"), L10n.tr("editor.tool.pen"))
+        _ = add(11, .assetWithChevron("More"), L10n.tr("editor.more"))
+        stack.addArrangedSubview(Self.divider())
+        ocrButton = add(9, .asset("OCR"), L10n.tr("editor.tool.ocr"))
+        stack.addArrangedSubview(Self.divider())
+
+        undoButton = add(301, .asset("Undo"), L10n.tr("editor.undo"))
+        redoButton = add(306, .asset("Redo"), L10n.tr("editor.redo"))
+        saveButton = add(303, .asset("Download"), L10n.tr("editor.saveToFile"))
+        pinButton = add(10, .asset("Pin"), L10n.tr("editor.tool.pin"))
+        copyButton = add(302, "square.and.arrow.up", L10n.tr("editor.copy"))
+        _ = add(304, .asset("Close"), L10n.tr("action.cancel"))
+        _ = add(305, .asset("Complete"), L10n.tr("action.confirm"))
+        startLongButton = add(12, .asset("Complete"), L10n.tr("capture.long.start"))
+        startLongButton.isHidden = true
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
@@ -1449,22 +1737,49 @@ final class SelectionToolbar: NSVisualEffectView {
         return line
     }
 
-    func update(tool: ScreenshotAnnotation.Kind?, canUndo: Bool, canRedo: Bool, hasSelection: Bool) {
+    func update(mode: CaptureMode, tool: ScreenshotAnnotation.Kind?, canUndo: Bool, canRedo: Bool, hasSelection: Bool) {
         let activeTag = Self.tag(for: tool) ?? 0
         for (tag, button) in toolButtons {
-            button.selectedState = tag == activeTag && tag != 304 && tag != 305 && tag != 301 && tag != 302 && tag != 303
+            let isAction = (301...306).contains(tag) || tag == 12 || tag == 20 || tag == 21
+            button.selectedState = tag == activeTag && !isAction
         }
+        modeScreenshotButton.selectedState = mode == .screenshot
+        modeLongButton.selectedState = mode == .longCapture
+
+        // 长截图模式隐藏标注区与撤销/保存/钉图/复制组，换成「开始长截图」
+        let annotationTags = [0, 7, 1, 3, 6, 4, 11, 9]
+        for tag in annotationTags {
+            toolButtons[tag]?.isHidden = mode == .longCapture
+        }
+        for tag in [301, 306, 303, 10, 302] {
+            toolButtons[tag]?.isHidden = mode == .longCapture
+        }
+        toolButtons[305]?.isHidden = mode == .longCapture
+        startLongButton.isHidden = mode != .longCapture
+        startLongButton.isEnabled = hasSelection
+
         undoButton.isEnabled = canUndo
+        redoButton.isEnabled = canRedo
         copyButton.isEnabled = hasSelection
         saveButton.isEnabled = hasSelection
         ocrButton.isEnabled = hasSelection
         pinButton.isEnabled = hasSelection
+        switch tool {
+        case .rectangle: setShapeAsset("ShapeRectangle")
+        case .ellipse: setShapeAsset("ShapeEllipse")
+        default: break
+        }
+    }
+
+    private func setShapeAsset(_ name: String) {
+        guard currentShapeAsset != name else { return }
+        currentShapeAsset = name
+        shapeButton.setLook(.asset(name))
     }
 
     private static func tag(for tool: ScreenshotAnnotation.Kind?) -> Int? {
         switch tool {
-        case .rectangle: return 1
-        case .ellipse: return 2
+        case .rectangle, .ellipse: return 1
         case .arrow: return 3
         case .pen: return 4
         case .mosaic: return 5
@@ -1484,10 +1799,11 @@ final class SelectionOptionsBar: NSVisualEffectView {
     private var colorButtons: [Int: ToolbarButton] = [:]
     private var arrowButtons: [Int: ToolbarButton] = [:]
     private var mosaicButtons: [Int: ToolbarButton] = [:]
-    private var widthSlider: NSSlider?
     private var opacitySlider: NSSlider?
     private var opacityValueLabel: NSTextField?
     private var sizeButton: PopupSizeButton?
+    private var shapeButton: PopupShapeButton?
+    private var widthButtons: [Int: ToolbarButton] = [:]
     private var previewDot: NSView?
 
     init(target: AnyObject, action: Selector) {
@@ -1532,8 +1848,10 @@ final class SelectionOptionsBar: NSVisualEffectView {
 
     func configure(
         tool: ScreenshotAnnotation.Kind?,
+        shapeKind: ScreenshotAnnotation.Kind,
         colorIndex: Int,
         strokeScale: CGFloat,
+        widthPreset: Int,
         opacity: CGFloat,
         mosaicOpacity: CGFloat,
         arrowStyle: Int,
@@ -1546,10 +1864,11 @@ final class SelectionOptionsBar: NSVisualEffectView {
         }
         let activeOpacity = tool == .mosaic ? mosaicOpacity : opacity
         if configuredTool != tool {
-            rebuild(for: tool, strokeScale: strokeScale, opacity: activeOpacity, arrowStyle: arrowStyle, mosaicStyle: mosaicStyle, fontSize: fontSize)
+            rebuild(for: tool, shapeKind: shapeKind, widthPreset: widthPreset, strokeScale: strokeScale, opacity: activeOpacity, arrowStyle: arrowStyle, mosaicStyle: mosaicStyle, fontSize: fontSize)
             configuredTool = tool
         }
-        widthSlider?.doubleValue = Double((strokeScale - 0.8) / 2.2)
+        shapeButton?.titleText = shapeKind == .ellipse ? L10n.tr("editor.tool.ellipse") : L10n.tr("editor.tool.rectangle")
+        for (index, button) in widthButtons { button.selectedState = index == widthPreset }
         opacitySlider?.doubleValue = Double(activeOpacity)
         opacityValueLabel?.stringValue = "\(Int(round(activeOpacity * 100))) %"
         for (index, button) in colorButtons { button.selectedState = index == colorIndex }
@@ -1566,6 +1885,8 @@ final class SelectionOptionsBar: NSVisualEffectView {
 
     private func rebuild(
         for tool: ScreenshotAnnotation.Kind,
+        shapeKind: ScreenshotAnnotation.Kind,
+        widthPreset: Int,
         strokeScale: CGFloat,
         opacity: CGFloat,
         arrowStyle: Int,
@@ -1579,15 +1900,22 @@ final class SelectionOptionsBar: NSVisualEffectView {
         colorButtons.removeAll()
         arrowButtons.removeAll()
         mosaicButtons.removeAll()
-        widthSlider = nil
+        widthButtons.removeAll()
         opacitySlider = nil
         opacityValueLabel = nil
         sizeButton = nil
+        shapeButton = nil
         previewDot = nil
 
         switch tool {
-        case .rectangle, .ellipse, .pen:
-            addWidthControl(scale: strokeScale)
+        case .rectangle, .ellipse:
+            addShapeControl(kind: shapeKind)
+            addDivider()
+            addWidthControl(preset: widthPreset)
+            addDivider()
+            addColors()
+        case .pen:
+            addWidthControl(preset: widthPreset)
             addDivider()
             addColors()
         case .arrow:
@@ -1599,7 +1927,7 @@ final class SelectionOptionsBar: NSVisualEffectView {
                 stack.addArrangedSubview(button)
             }
             addDivider()
-            addWidthControl(scale: strokeScale)
+            addWidthControl(preset: widthPreset)
             addDivider()
             addColors()
         case .highlighter:
@@ -1645,7 +1973,13 @@ final class SelectionOptionsBar: NSVisualEffectView {
 
     private func addColors() {
         for index in 0..<ScreenshotSelectionSurfaceView.paletteCount {
-            let button = ToolbarButton(look: .color(ScreenshotSelectionSurfaceView.paletteColor(index)), tooltip: "", target: target, action: action)
+            let look: ToolbarButton.Look
+            switch index {
+            case 6: look = .themeSwatch
+            case 7: look = .customSwatch
+            default: look = .color(ScreenshotSelectionSurfaceView.paletteColor(index))
+            }
+            let button = ToolbarButton(look: look, tooltip: "", target: target, action: action)
             button.tag = 101 + index
             button.size = NSSize(width: 26, height: 28)
             colorButtons[index] = button
@@ -1653,17 +1987,28 @@ final class SelectionOptionsBar: NSVisualEffectView {
         }
     }
 
-    private func addWidthControl(scale: CGFloat) {
-        let dot = Self.dot(size: 4, color: NSColor(white: 0.45, alpha: 1))
-        stack.addArrangedSubview(dot)
-        let slider = NSSlider(value: Double((scale - 0.8) / 2.2), minValue: 0, maxValue: 1, target: target, action: action)
-        slider.tag = 501
-        slider.controlSize = .small
-        slider.isContinuous = true
-        slider.translatesAutoresizingMaskIntoConstraints = false
-        slider.widthAnchor.constraint(equalToConstant: 110).isActive = true
-        widthSlider = slider
-        stack.addArrangedSubview(slider)
+    private func addShapeControl(kind: ScreenshotAnnotation.Kind) {
+        let button = PopupShapeButton(current: kind, target: target, action: action)
+        shapeButton = button
+        stack.addArrangedSubview(button)
+    }
+
+    private func addWidthControl(preset: Int) {
+        let titles = [
+            L10n.tr("editor.size.small"),
+            L10n.tr("editor.size.medium"),
+            L10n.tr("editor.size.large"),
+            L10n.tr("editor.size.theme"),
+        ]
+        for (index, title) in titles.enumerated() {
+            let textWidth = (title as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: 11.5, weight: .medium)]).width
+            let button = ToolbarButton(look: .chip(title), tooltip: "", target: target, action: action)
+            button.tag = 511 + index
+            button.size = NSSize(width: ceil(textWidth) + 16, height: 26)
+            button.selectedState = index == preset
+            widthButtons[index] = button
+            stack.addArrangedSubview(button)
+        }
         let preview = Self.dot(size: 16, color: ScreenshotSelectionSurfaceView.paletteColor(0))
         previewDot = preview
         stack.addArrangedSubview(preview)
@@ -1833,6 +2178,80 @@ final class PopupSizeButton: NSButton {    var titleText = "16" {
     }
 }
 
+/// 形状下拉（矩形/椭圆），对齐 FloGravity 样式面板的「形状」菜单。
+final class PopupShapeButton: NSButton {
+    var titleText: String {
+        didSet { needsDisplay = true }
+    }
+    private let shapeMenu: NSMenu
+    private let shapeWidth: CGFloat
+
+    init(current: ScreenshotAnnotation.Kind, target: AnyObject?, action: Selector) {
+        let menu = NSMenu()
+        for (tag, key) in [(601, "editor.tool.rectangle"), (602, "editor.tool.ellipse")] {
+            let item = NSMenuItem(title: L10n.tr(key), action: action, keyEquivalent: "")
+            item.target = target
+            item.tag = tag
+            menu.addItem(item)
+        }
+        shapeMenu = menu
+        let font = NSFont.systemFont(ofSize: 12, weight: .medium)
+        let widest = max(
+            (L10n.tr("editor.tool.rectangle") as NSString).size(withAttributes: [.font: font]).width,
+            (L10n.tr("editor.tool.ellipse") as NSString).size(withAttributes: [.font: font]).width
+        )
+        shapeWidth = ceil(widest) + 34
+        titleText = ""
+        super.init(frame: .zero)
+        isBordered = false
+        title = ""
+        refusesFirstResponder = true
+        translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            widthAnchor.constraint(equalToConstant: shapeWidth),
+            heightAnchor.constraint(equalToConstant: 24),
+        ])
+        titleText = current == .ellipse ? L10n.tr("editor.tool.ellipse") : L10n.tr("editor.tool.rectangle")
+    }
+
+    required init?(coder: NSCoder) { fatalError("not used") }
+
+    override var intrinsicContentSize: NSSize { NSSize(width: shapeWidth, height: 24) }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let rect = bounds.insetBy(dx: 0.5, dy: 0.5)
+        let path = NSBezierPath(roundedRect: rect, xRadius: 6, yRadius: 6)
+        NSColor(white: 1, alpha: 0.9).setFill()
+        path.fill()
+        NSColor.black.withAlphaComponent(0.14).setStroke()
+        path.lineWidth = 1
+        path.stroke()
+
+        let attrs: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: 12, weight: .medium),
+            .foregroundColor: NSColor.labelColor,
+        ]
+        let size = (titleText as NSString).size(withAttributes: attrs)
+        (titleText as NSString).draw(at: NSPoint(x: 10, y: bounds.midY - size.height / 2), withAttributes: attrs)
+
+        let chevron = NSBezierPath()
+        chevron.lineWidth = 1.6
+        chevron.lineCapStyle = .round
+        chevron.lineJoinStyle = .round
+        let cx = bounds.maxX - 12
+        let cy = bounds.midY
+        chevron.move(to: NSPoint(x: cx - 4, y: cy - 2))
+        chevron.line(to: NSPoint(x: cx, y: cy + 2))
+        chevron.line(to: NSPoint(x: cx + 4, y: cy - 2))
+        NSColor.secondaryLabelColor.setStroke()
+        chevron.stroke()
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        shapeMenu.popUp(positioning: nil, at: NSPoint(x: 0, y: bounds.maxY + 4), in: self)
+    }
+}
+
 final class ToolbarButton: NSButton {
     enum Look {
         case symbol(String)
@@ -1849,9 +2268,16 @@ final class ToolbarButton: NSButton {
         case mosaicGlyph
         case ocrGlyph
         case pinGlyph
+        case asset(String)
+        case assetWithChevron(String)
+        case chip(String)
+        case themeSwatch
+        case customSwatch
     }
 
-    private let look: Look
+    private var look: Look {
+        didSet { needsDisplay = true }
+    }
     var size: NSSize = NSSize(width: 30, height: 30) {
         didSet { invalidateIntrinsicContentSize() }
     }
@@ -1880,6 +2306,8 @@ final class ToolbarButton: NSButton {
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
+
+    func setLook(_ newLook: Look) { look = newLook }
 
     override var intrinsicContentSize: NSSize { size }
 
@@ -2000,8 +2428,113 @@ final class ToolbarButton: NSButton {
             drawOCRGlyph(tint: tint)
         case .pinGlyph:
             drawPinGlyph(tint: tint)
+        case .asset(let name):
+            drawArt(name, tint: tint)
+        case .assetWithChevron(let name):
+            drawArt(name, tint: tint, chevron: true)
+        case .chip(let title):
+            drawChip(title, tint: tint)
+        case .themeSwatch:
+            drawSpecialSwatch(theme: true)
+        case .customSwatch:
+            drawSpecialSwatch(theme: false)
         }
         NSGraphicsContext.current?.cgContext.setAlpha(1)
+    }
+
+    /// 跟随主题：黑白对半；自定义：四色环。
+    private func drawSpecialSwatch(theme: Bool) {
+        let swatch = NSRect(x: bounds.midX - 8.5, y: bounds.midY - 8.5, width: 17, height: 17)
+        let clip = NSBezierPath(roundedRect: swatch, xRadius: 4, yRadius: 4)
+        NSGraphicsContext.saveGraphicsState()
+        clip.addClip()
+        if theme {
+            NSColor(white: 0.08, alpha: 1).setFill()
+            NSRect(x: swatch.minX, y: swatch.minY, width: swatch.width / 2, height: swatch.height).fill()
+            NSColor.white.setFill()
+            NSRect(x: swatch.midX, y: swatch.minY, width: swatch.width / 2, height: swatch.height).fill()
+        } else {
+            let colors: [NSColor] = [.systemRed, .systemYellow, .systemGreen, .systemBlue]
+            for (i, color) in colors.enumerated() {
+                color.setFill()
+                let x = i % 2 == 0 ? swatch.minX : swatch.midX
+                let y = i / 2 == 0 ? swatch.midY : swatch.minY
+                NSRect(x: x, y: y, width: swatch.width / 2, height: swatch.height / 2).fill()
+            }
+        }
+        NSGraphicsContext.restoreGraphicsState()
+        NSColor.black.withAlphaComponent(0.14).setStroke()
+        clip.lineWidth = 1
+        clip.stroke()
+        if selectedState {
+            NSColor.white.setStroke()
+            let check = NSBezierPath()
+            check.lineWidth = 2
+            check.lineCapStyle = .round
+            check.move(to: CGPoint(x: swatch.minX + 4, y: swatch.midY - 1))
+            check.line(to: CGPoint(x: swatch.minX + 7.5, y: swatch.midY + 3.5))
+            check.line(to: CGPoint(x: swatch.maxX - 4, y: swatch.midY - 4))
+            check.stroke()
+        }
+    }
+
+    /// FloGravity 样式面板里的「小/中/大」胶囊按钮。
+    private func drawChip(_ title: String, tint: NSColor) {
+        let rect = bounds.insetBy(dx: 1, dy: 3)
+        let path = NSBezierPath(roundedRect: rect, xRadius: 6, yRadius: 6)
+        NSColor(white: 1, alpha: 0.9).setFill()
+        path.fill()
+        (selectedState ? NSColor.controlAccentColor : NSColor.black.withAlphaComponent(0.14)).setStroke()
+        path.lineWidth = selectedState ? 1.5 : 1
+        path.stroke()
+        let attrs: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: 11.5, weight: .medium),
+            .foregroundColor: selectedState ? NSColor.controlAccentColor : tint,
+        ]
+        let size = (title as NSString).size(withAttributes: attrs)
+        (title as NSString).draw(
+            at: CGPoint(x: bounds.midX - size.width / 2, y: bounds.midY - size.height / 2),
+            withAttributes: attrs
+        )
+    }
+
+    /// FloGravity 原始工具条图标（38pt 线稿 PNG，模板着色）。
+    private static var artCache: [String: NSImage] = [:]
+
+    static func art(_ name: String) -> NSImage? {
+        if let cached = artCache[name] { return cached }
+        guard let url = Bundle.pasteMemoResources.url(
+            forResource: "ScreenshotToolbar" + name,
+            withExtension: "png",
+            subdirectory: "Resources/ScreenshotToolbar"
+        ), let image = NSImage(contentsOf: url) else { return nil }
+        artCache[name] = image
+        return image
+    }
+
+    private func drawArt(_ name: String, tint: NSColor, chevron: Bool = false) {
+        guard let image = Self.art(name) else { return }
+        let side: CGFloat = chevron ? 17 : 19
+        let originX = chevron ? bounds.midX - side / 2 - 2.5 : bounds.midX - side / 2
+        let rect = NSRect(x: originX, y: bounds.midY - side / 2, width: side, height: side)
+        NSGraphicsContext.saveGraphicsState()
+        image.draw(in: rect, from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: false, hints: nil)
+        tint.set()
+        rect.fill(using: .sourceAtop)
+        NSGraphicsContext.restoreGraphicsState()
+        if chevron {
+            let path = NSBezierPath()
+            path.lineWidth = 1.4
+            path.lineCapStyle = .round
+            path.lineJoinStyle = .round
+            let x = bounds.maxX - 5.5
+            let y = bounds.midY
+            path.move(to: NSPoint(x: x - 2.2, y: y + 1.4))
+            path.line(to: NSPoint(x: x, y: y - 0.8))
+            path.line(to: NSPoint(x: x + 2.2, y: y + 1.4))
+            tint.setStroke()
+            path.stroke()
+        }
     }
 
     private func drawTextGlyph(tint: NSColor) {
@@ -2332,11 +2865,12 @@ final class HoverTipPanel: NSPanel {
 }
 
 extension ScreenshotSelectionSurfaceView {
-    static let paletteCount = 7
+    static let paletteCount = 8
     static let textSizeOptions: [CGFloat] = [12, 16, 20, 24, 28, 32, 40]
 
     static func paletteColor(_ index: Int) -> NSColor {
-        nsPalette[min(max(index, 0), nsPalette.count - 1)]
+        if index >= nsPalette.count { return customPaletteColor }
+        return nsPalette[max(index, 0)]
     }
 }
 
@@ -2351,5 +2885,255 @@ private extension CGRect {
 
     func offsetBy(dx: CGFloat, dy: CGFloat) -> CGRect {
         CGRect(x: minX + dx, y: minY + dy, width: width, height: height)
+    }
+}
+
+// MARK: - 长截图 HUD（滚动捕获期间的悬浮控制条，与 FloGravity 一致放在捕获区域外）
+
+final class LongCaptureHUD: NSPanel {
+    private let statusLabel: NSTextField
+    private let autoscrollButton: NSButton
+
+    init(
+        regionRect: CGRect, screen: NSScreen,
+        onFinish: @escaping () -> Void,
+        onCancel: @escaping () -> Void,
+        onAutoscroll: @escaping (Bool) -> Void
+    ) {
+        statusLabel = NSTextField(labelWithString: L10n.tr("capture.long.capturing"))
+        statusLabel.font = .systemFont(ofSize: 12, weight: .medium)
+        statusLabel.textColor = NSColor(white: 0.12, alpha: 1)
+
+        autoscrollButton = NSButton(checkboxWithTitle: L10n.tr("capture.long.autoscroll"), target: nil, action: nil)
+        autoscrollButton.font = .systemFont(ofSize: 12)
+
+        let finishButton = NSButton(title: L10n.tr("capture.long.finish"), target: nil, action: nil)
+        finishButton.bezelStyle = .rounded
+        finishButton.keyEquivalent = "\r"
+        finishButton.controlSize = .small
+        finishButton.font = .systemFont(ofSize: 12, weight: .medium)
+
+        let cancelButton = NSButton(title: L10n.tr("action.cancel"), target: nil, action: nil)
+        cancelButton.bezelStyle = .rounded
+        cancelButton.controlSize = .small
+        cancelButton.font = .systemFont(ofSize: 12)
+
+        let effect = NSVisualEffectView()
+        effect.material = .popover
+        effect.blendingMode = .withinWindow
+        effect.state = .active
+        effect.appearance = NSAppearance(named: .aqua)
+        effect.wantsLayer = true
+        effect.layer?.cornerRadius = 12
+        effect.layer?.masksToBounds = true
+
+        let tint = NSView()
+        tint.wantsLayer = true
+        tint.layer?.backgroundColor = NSColor(white: 1, alpha: 0.72).cgColor
+
+        let stack = NSStackView(views: [statusLabel, autoscrollButton, finishButton, cancelButton])
+        stack.orientation = .horizontal
+        stack.alignment = .centerY
+        stack.spacing = 10
+        stack.edgeInsets = NSEdgeInsets(top: 8, left: 14, bottom: 8, right: 14)
+        statusLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        statusLabel.setContentHuggingPriority(.defaultLow, for: .horizontal)
+
+        let container = NSView()
+        container.translatesAutoresizingMaskIntoConstraints = false
+        tint.translatesAutoresizingMaskIntoConstraints = false
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        effect.addSubview(tint)
+        effect.addSubview(stack)
+        container.addSubview(effect)
+
+        super.init(
+            contentRect: NSRect(x: 0, y: 0, width: 380, height: 52),
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered, defer: false
+        )
+        level = .screenSaver
+        isOpaque = false
+        backgroundColor = .clear
+        hasShadow = true
+        hidesOnDeactivate = false
+        contentView = container
+
+        NSLayoutConstraint.activate([
+            effect.topAnchor.constraint(equalTo: container.topAnchor, constant: 0),
+            effect.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: 0),
+            effect.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 0),
+            effect.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: 0),
+
+            tint.topAnchor.constraint(equalTo: effect.topAnchor),
+            tint.bottomAnchor.constraint(equalTo: effect.bottomAnchor),
+            tint.leadingAnchor.constraint(equalTo: effect.leadingAnchor),
+            tint.trailingAnchor.constraint(equalTo: effect.trailingAnchor),
+
+            stack.topAnchor.constraint(equalTo: effect.topAnchor, constant: 8),
+            stack.bottomAnchor.constraint(equalTo: effect.bottomAnchor, constant: -8),
+            stack.leadingAnchor.constraint(equalTo: effect.leadingAnchor, constant: 14),
+            stack.trailingAnchor.constraint(equalTo: effect.trailingAnchor, constant: -14),
+        ])
+
+        // 目标回调（NSButton target 需要 target-action；用辅助闭包持有）
+        finishButton.target = ClosureTarget.shared
+        finishButton.action = #selector(ClosureTarget.finishAction)
+        ClosureTarget.shared.finishHandler = onFinish
+        cancelButton.target = ClosureTarget.shared
+        cancelButton.action = #selector(ClosureTarget.cancelAction)
+        ClosureTarget.shared.cancelHandler = onCancel
+        autoscrollButton.target = ClosureTarget.shared
+        autoscrollButton.action = #selector(ClosureTarget.autoscrollAction)
+        ClosureTarget.shared.autoscrollHandler = onAutoscroll
+
+        // 位置：优先捕获区域正上方；放不下则放区域下方（始终在捕获区域外，不会入镜）
+        let width: CGFloat = 380
+        let height: CGFloat = 52
+        let gap: CGFloat = 12
+        let visibleTop = screen.frame.maxY
+        let visibleBottom = screen.frame.minY
+        var hudOriginY = screen.frame.maxY - regionRect.minY + gap
+        if hudOriginY + height > visibleTop {
+            hudOriginY = screen.frame.maxY - regionRect.maxY - gap - height
+        }
+        hudOriginY = max(visibleBottom + 4, min(hudOriginY, visibleTop - height - 4))
+        var x = screen.frame.minX + regionRect.midX - width / 2
+        x = max(screen.frame.minX + 8, min(x, screen.frame.maxX - width - 8))
+        setFrameOrigin(NSPoint(x: x, y: hudOriginY))
+    }
+
+    required init?(coder: NSCoder) { fatalError("not used") }
+
+    override var canBecomeKey: Bool { true }
+
+    func showPanel() {
+        makeKeyAndOrderFront(nil)
+    }
+
+    func update(height: Int, atBottom: Bool) {
+        statusLabel.stringValue = atBottom
+            ? L10n.tr("capture.long.bottom")
+            : String(format: L10n.tr("capture.long.height"), height)
+    }
+
+    override func keyDown(with event: NSEvent) {
+        if Int(event.keyCode) == 53 { // Esc 取消
+            ClosureTarget.shared.cancelHandler?()
+        } else {
+            super.keyDown(with: event)
+        }
+    }
+}
+
+/// NSButton 需要 target-action 桥接闭包的最小容器。
+final class ClosureTarget: NSObject {
+    static let shared = ClosureTarget()
+    var finishHandler: (() -> Void)?
+    var cancelHandler: (() -> Void)?
+    var autoscrollHandler: ((Bool) -> Void)?
+    /// 预览窗的输出数据（复制/保存用）
+    var pngData: Data?
+    weak var previewWindow: NSWindow?
+
+    @objc func finishAction(_ sender: Any?) { finishHandler?() }
+    @objc func cancelAction(_ sender: Any?) { cancelHandler?() }
+    @objc func autoscrollAction(_ sender: NSButton) {
+        autoscrollHandler?(sender.state == .on)
+    }
+
+    @objc func copyPNGAction(_ sender: Any?) {
+        guard let pngData else { return }
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setData(pngData, forType: .png)
+        previewWindow?.close()
+        ToastCenter.shared.show(ToastDescriptor(message: L10n.tr("capture.long.copied"), icon: .success))
+    }
+
+    @objc func savePNGAction(_ sender: Any?) {
+        guard let pngData, let window = previewWindow else { return }
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.png]
+        panel.nameFieldStringValue = "LongScreenshot.png"
+        panel.canCreateDirectories = true
+        panel.beginSheetModal(for: window) { response in
+            if response == .OK, let url = panel.url {
+                try? pngData.write(to: url)
+            }
+        }
+    }
+}
+
+// MARK: - 长截图预览（完成后预览长图，复制或保存——对齐 FloGravity 流程）
+
+final class LongCapturePreview {
+    @discardableResult
+    static func present(pngData: Data) -> NSWindow? {
+        guard let image = NSImage(data: pngData) else { return nil }
+
+        let size = image.size
+        let maxWidth = min(760, (NSScreen.main?.frame.width ?? 1200) - 80)
+        let maxHeight = (NSScreen.main?.frame.height ?? 900) - 160
+        let windowWidth = maxWidth
+        let windowHeight = min(maxHeight, max(360, size.height * min(1, maxWidth / size.width) + 92))
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: windowWidth, height: windowHeight),
+            styleMask: [.titled, .closable, .miniaturizable],
+            backing: .buffered, defer: false
+        )
+        window.title = L10n.tr("capture.long.preview")
+        window.isReleasedWhenClosed = false
+
+        let scrollView = NSScrollView()
+        scrollView.hasVerticalScroller = true
+        scrollView.hasHorizontalScroller = false
+        scrollView.autohidesScrollers = true
+        scrollView.borderType = .noBorder
+        scrollView.documentView = NSImageView(image: image)
+        (scrollView.documentView as? NSImageView)?.imageScaling = .scaleNone
+
+        let copyButton = NSButton(title: L10n.tr("editor.copy"), target: nil, action: nil)
+        copyButton.bezelStyle = .rounded
+        let saveButton = NSButton(title: L10n.tr("editor.saveToFile"), target: nil, action: nil)
+        saveButton.bezelStyle = .rounded
+        let infoLabel = NSTextField(labelWithString: "\(Int(size.width)) × \(Int(size.height)) px")
+        infoLabel.font = .systemFont(ofSize: 11)
+        infoLabel.textColor = .secondaryLabelColor
+
+        let buttonStack = NSStackView(views: [infoLabel, NSView(), saveButton, copyButton])
+        buttonStack.orientation = .horizontal
+        buttonStack.spacing = 10
+        buttonStack.edgeInsets = NSEdgeInsets(top: 8, left: 14, bottom: 8, right: 14)
+
+        let container = NSView()
+        scrollView.translatesAutoresizingMaskIntoConstraints = false
+        buttonStack.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(scrollView)
+        container.addSubview(buttonStack)
+        NSLayoutConstraint.activate([
+            scrollView.topAnchor.constraint(equalTo: container.topAnchor),
+            scrollView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            scrollView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: buttonStack.topAnchor, constant: -4),
+            buttonStack.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            buttonStack.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            buttonStack.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+            buttonStack.heightAnchor.constraint(equalToConstant: 40),
+        ])
+        window.contentView = container
+
+        copyButton.target = ClosureTarget.shared
+        copyButton.action = #selector(ClosureTarget.copyPNGAction)
+        saveButton.target = ClosureTarget.shared
+        saveButton.action = #selector(ClosureTarget.savePNGAction)
+        ClosureTarget.shared.pngData = pngData
+        ClosureTarget.shared.previewWindow = window
+
+        window.center()
+        NSApp.activate(ignoringOtherApps: true)
+        window.makeKeyAndOrderFront(nil)
+        return window
     }
 }

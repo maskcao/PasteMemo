@@ -153,6 +153,12 @@
 "editor.pin.done" = "Épinglé à l'écran";
 "editor.pin.close" = "Fermer l'image épinglée";
 "editor.tool.crop" = "Recadrer";
+"editor.tool.shape" = "Forme";
+"editor.more" = "Plus";
+"editor.size.small" = "Petit";
+"editor.size.medium" = "Moyen";
+"editor.size.large" = "Grand";
+"editor.size.theme" = "Thème";
 "editor.undo" = "Annuler";
 "editor.redo" = "Rétablir";
 "action.assignGroup" = "Attribuer au groupe";
@@ -552,9 +558,7 @@
 "relay.collapse" = "Replier";
 "relay.content.truncated" = "…(contenu trop volumineux, tronqué)";
 "relay.alert.title" = "Mode Relais activé";
-"relay.alert.message" = "Le collage rapide est en pause. Le contenu copié sera ajouté à la file relais.
-
-Utilisez %@ pour coller un par un.";
+"relay.alert.message" = "Le collage rapide est en pause. Le contenu copié sera ajouté à la file relais.\n\nUtilisez %@ pour coller un par un.";
 "relay.alert.ok" = "Compris";
 "relay.alert.dontShowAgain" = "Ne plus afficher";
 "relay.settings.pasteKey" = "Raccourci de collage relais";
@@ -1256,3 +1260,16 @@ Utilisez %@ pour coller un par un.";
 "merge.undo.toast" = "%d éléments fusionnés";
 "rule.undo.toast" = "« %@ » exécutée";
 "edit.undo.toast" = "Enregistré";
+
+// 长截图（对齐 FloGravity 截图模块）
+"capture.mode.screenshot" = "Capture";
+"capture.mode.long" = "Capture longue";
+"capture.long.start" = "Démarrer la capture";
+"capture.long.finish" = "Terminer";
+"capture.long.autoscroll" = "Défilement automatique";
+"capture.long.capturing" = "Faites défiler la page — assemblage automatique…";
+"capture.long.height" = "%lld px assemblés";
+"capture.long.bottom" = "Bas de page atteint — cliquez sur Terminer";
+"capture.long.copied" = "Capture longue copiée";
+"capture.long.preview" = "Aperçu de la capture longue";
+"capture.long.failed" = "Échec de la capture longue";

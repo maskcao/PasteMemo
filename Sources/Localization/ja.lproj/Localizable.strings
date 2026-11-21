@@ -161,6 +161,12 @@
 "editor.pin.done" = "画面にピン留めしました";
 "editor.pin.close" = "ピン留め画像を閉じる";
 "editor.tool.crop" = "切り抜き";
+"editor.tool.shape" = "図形";
+"editor.more" = "その他";
+"editor.size.small" = "小";
+"editor.size.medium" = "中";
+"editor.size.large" = "大";
+"editor.size.theme" = "テーマ";
 "editor.undo" = "元に戻す";
 "editor.redo" = "やり直す";
 "action.assignGroup" = "グループに割り当て";
@@ -573,9 +579,7 @@
 "relay.collapse" = "折りたたむ";
 "relay.content.truncated" = "…（内容が大きすぎるため切り詰めました）";
 "relay.alert.title" = "リレーモードが有効になりました";
-"relay.alert.message" = "クイックペーストが一時停止しました。コピーした内容はリレーキューに追加されます。
-
-%@ で1つずつペーストします。";
+"relay.alert.message" = "クイックペーストが一時停止しました。コピーした内容はリレーキューに追加されます。\n\n%@ で1つずつペーストします。";
 "relay.alert.ok" = "了解";
 "relay.alert.dontShowAgain" = "今後表示しない";
 "relay.settings.pasteKey" = "リレーペーストショートカット";
@@ -1252,3 +1256,16 @@
 "merge.undo.toast" = "%d 件を結合しました";
 "rule.undo.toast" = "「%@」を実行しました";
 "edit.undo.toast" = "保存しました";
+
+// 长截图（对齐 FloGravity 截图模块）
+"capture.mode.screenshot" = "スクリーンショット";
+"capture.mode.long" = "長いスクリーンショット";
+"capture.long.start" = "撮影を開始";
+"capture.long.finish" = "完了";
+"capture.long.autoscroll" = "自動スクロール";
+"capture.long.capturing" = "ページをスクロールすると自動で連結します…";
+"capture.long.height" = "連結済み %lld px";
+"capture.long.bottom" = "一番下に到達 — 完了をクリック";
+"capture.long.copied" = "長いスクリーンショットをコピーしました";
+"capture.long.preview" = "長いスクリーンショットのプレビュー";
+"capture.long.failed" = "長いスクリーンショットに失敗しました";

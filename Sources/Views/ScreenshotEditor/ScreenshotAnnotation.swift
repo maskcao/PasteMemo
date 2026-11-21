@@ -55,12 +55,13 @@ struct ScreenshotAnnotation: Identifiable {
 enum AnnotationStyle {
     static let palette: [Color] = [
         Color(red: 1.00, green: 0.27, blue: 0.23),
-        Color(red: 1.00, green: 0.80, blue: 0.00),
-        Color(red: 0.00, green: 0.48, blue: 1.00),
         Color(red: 0.20, green: 0.78, blue: 0.35),
-        Color(red: 0.10, green: 0.10, blue: 0.12),
-        Color(red: 0.56, green: 0.56, blue: 0.58),
+        Color(red: 0.00, green: 0.48, blue: 1.00),
+        Color(red: 0.68, green: 0.32, blue: 0.88),
         Color.white,
+        Color(red: 0.10, green: 0.10, blue: 0.12),
+        Color(red: 0.10, green: 0.10, blue: 0.12),
+        Color(red: 0.68, green: 0.32, blue: 0.88),
     ]
 
     static let weights: [CGFloat] = [1.0, 1.8, 3.0]
@@ -92,7 +93,7 @@ enum AnnotationRenderer {
     private static func drawOne(_ context: inout GraphicsContext, _ a: ScreenshotAnnotation, _ imageWidth: CGFloat) {
         let weight = a.strokeScale > 0 ? a.strokeScale : AnnotationStyle.weights[a.weightIndex]
         let stroke = AnnotationStyle.baseStroke(imageWidth: imageWidth) * weight
-        let color = AnnotationStyle.palette[a.colorIndex]
+        let color = AnnotationStyle.palette[min(max(a.colorIndex, 0), AnnotationStyle.palette.count - 1)]
 
         switch a.kind {
         case .arrow:

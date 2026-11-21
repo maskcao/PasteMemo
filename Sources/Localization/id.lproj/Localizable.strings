@@ -298,6 +298,12 @@
 "editor.pin.done" = "Disematkan ke layar";
 "editor.pin.close" = "Tutup gambar tersemat";
 "editor.tool.crop" = "Pangkas";
+"editor.tool.shape" = "Bentuk";
+"editor.more" = "Lainnya";
+"editor.size.small" = "Kecil";
+"editor.size.medium" = "Sedang";
+"editor.size.large" = "Besar";
+"editor.size.theme" = "Tema";
 "editor.undo" = "Urungkan";
 "editor.redo" = "Ulangi";
 "action.assignGroup" = "Tetapkan ke Grup";
@@ -649,9 +655,7 @@
 "relay.collapse" = "Tutup";
 "relay.content.truncated" = "…(konten terlalu besar, dipotong)";
 "relay.alert.title" = "Mode Relay diaktifkan";
-"relay.alert.message" = "Tempel cepat dijeda. Konten yang disalin akan ditambahkan ke antrian relay.
-
-Gunakan %@ untuk menempel satu per satu.";
+"relay.alert.message" = "Tempel cepat dijeda. Konten yang disalin akan ditambahkan ke antrian relay.\n\nGunakan %@ untuk menempel satu per satu.";
 "relay.alert.ok" = "Mengerti";
 "relay.alert.dontShowAgain" = "Jangan tampilkan lagi";
 "relay.settings.pasteKey" = "Pintasan tempel relay";
@@ -1226,3 +1230,16 @@ Gunakan %@ untuk menempel satu per satu.";
 "merge.undo.toast" = "%d item digabung";
 "rule.undo.toast" = "“%@” dijalankan";
 "edit.undo.toast" = "Tersimpan";
+
+// 长截图（对齐 FloGravity 截图模块）
+"capture.mode.screenshot" = "Tangkapan Layar";
+"capture.mode.long" = "Tangkapan Panjang";
+"capture.long.start" = "Mulai Gulir";
+"capture.long.finish" = "Selesai";
+"capture.long.autoscroll" = "Gulir Otomatis";
+"capture.long.capturing" = "Gulir halaman — digabung otomatis…";
+"capture.long.height" = "%lld px digabung";
+"capture.long.bottom" = "Sampai bawah halaman — klik Selesai";
+"capture.long.copied" = "Tangkapan panjang disalin";
+"capture.long.preview" = "Pratinjau Tangkapan Panjang";
+"capture.long.failed" = "Tangkapan panjang gagal";

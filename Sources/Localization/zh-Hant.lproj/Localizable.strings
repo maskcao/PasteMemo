@@ -297,6 +297,12 @@
 "editor.pin.done" = "已釘在螢幕";
 "editor.pin.close" = "關閉貼圖";
 "editor.tool.crop" = "裁剪";
+"editor.tool.shape" = "形狀";
+"editor.more" = "更多";
+"editor.size.small" = "小";
+"editor.size.medium" = "中";
+"editor.size.large" = "大";
+"editor.size.theme" = "跟隨主題";
 "editor.undo" = "復原";
 "editor.redo" = "重做";
 "action.assignGroup" = "歸入分組";
@@ -648,9 +654,7 @@
 "relay.collapse" = "收合";
 "relay.content.truncated" = "…（內容過大，已截斷）";
 "relay.alert.title" = "接力模式已開啟";
-"relay.alert.message" = "快捷貼上已暫停，複製的內容將自動加入接力佇列。
-
-使用 %@ 逐條貼上佇列內容。";
+"relay.alert.message" = "快捷貼上已暫停，複製的內容將自動加入接力佇列。\n\n使用 %@ 逐條貼上佇列內容。";
 "relay.alert.ok" = "知道了";
 "relay.alert.dontShowAgain" = "不再提示";
 "relay.settings.pasteKey" = "接力貼上快捷鍵";
@@ -1212,3 +1216,16 @@
 "merge.undo.toast" = "已合併 %d 條";
 "rule.undo.toast" = "已執行「%@」";
 "edit.undo.toast" = "已儲存";
+
+// 长截图（对齐 FloGravity 截图模块）
+"capture.mode.screenshot" = "截圖";
+"capture.mode.long" = "長截圖";
+"capture.long.start" = "開始長截圖";
+"capture.long.finish" = "完成";
+"capture.long.autoscroll" = "自動捲動";
+"capture.long.capturing" = "捲動頁面，自動拼接中…";
+"capture.long.height" = "已拼接 %lld px";
+"capture.long.bottom" = "已捲動到底，點擊完成生成";
+"capture.long.copied" = "長截圖已複製";
+"capture.long.preview" = "長截圖預覽";
+"capture.long.failed" = "長截圖失敗";

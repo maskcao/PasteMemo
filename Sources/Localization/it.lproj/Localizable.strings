@@ -298,6 +298,12 @@
 "editor.pin.done" = "Fissato sullo schermo";
 "editor.pin.close" = "Chiudi immagine fissata";
 "editor.tool.crop" = "Ritaglia";
+"editor.tool.shape" = "Forma";
+"editor.more" = "Altro";
+"editor.size.small" = "Piccolo";
+"editor.size.medium" = "Medio";
+"editor.size.large" = "Grande";
+"editor.size.theme" = "Tema";
 "editor.undo" = "Annulla";
 "editor.redo" = "Ripristina";
 "action.assignGroup" = "Assegna al gruppo";
@@ -648,9 +654,7 @@
 "relay.collapse" = "Comprimi";
 "relay.content.truncated" = "…(contenuto troppo grande, troncato)";
 "relay.alert.title" = "Modalità Staffetta attivata";
-"relay.alert.message" = "Incolla rapido in pausa. I contenuti copiati verranno aggiunti alla coda.
-
-Usa %@ per incollare uno per uno.";
+"relay.alert.message" = "Incolla rapido in pausa. I contenuti copiati verranno aggiunti alla coda.\n\nUsa %@ per incollare uno per uno.";
 "relay.alert.ok" = "Capito";
 "relay.alert.dontShowAgain" = "Non mostrare più";
 "relay.settings.pasteKey" = "Scorciatoia incolla staffetta";
@@ -1216,3 +1220,16 @@ Usa %@ per incollare uno per uno.";
 "merge.undo.toast" = "%d elementi uniti";
 "rule.undo.toast" = "“%@” eseguita";
 "edit.undo.toast" = "Salvato";
+
+// 长截图（对齐 FloGravity 截图模块）
+"capture.mode.screenshot" = "Istantanea";
+"capture.mode.long" = "Istantanea lunga";
+"capture.long.start" = "Avvia acquisizione";
+"capture.long.finish" = "Fine";
+"capture.long.autoscroll" = "Scorrimento automatico";
+"capture.long.capturing" = "Scorri la pagina: l'unione è automatica…";
+"capture.long.height" = "%lld px uniti";
+"capture.long.bottom" = "Fine pagina raggiunta — premi Fine";
+"capture.long.copied" = "Istantanea lunga copiata";
+"capture.long.preview" = "Anteprima istantanea lunga";
+"capture.long.failed" = "Acquisizione lunga non riuscita";

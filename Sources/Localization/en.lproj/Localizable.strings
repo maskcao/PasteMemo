@@ -325,6 +325,12 @@
 "editor.pin.done" = "Pinned to screen";
 "editor.pin.close" = "Close pinned image";
 "editor.tool.crop" = "Crop";
+"editor.tool.shape" = "Shape";
+"editor.more" = "More";
+"editor.size.small" = "Small";
+"editor.size.medium" = "Medium";
+"editor.size.large" = "Large";
+"editor.size.theme" = "Theme";
 "editor.undo" = "Undo";
 "editor.redo" = "Redo";
 "action.assignGroup" = "Assign to Group";
@@ -1200,3 +1206,16 @@
 "merge.undo.toast" = "Merged %d items";
 "rule.undo.toast" = "Applied “%@”";
 "edit.undo.toast" = "Saved";
+
+// 长截图（对齐 FloGravity 截图模块）
+"capture.mode.screenshot" = "Screenshot";
+"capture.mode.long" = "Long Capture";
+"capture.long.start" = "Start Scrolling";
+"capture.long.finish" = "Finish";
+"capture.long.autoscroll" = "Auto-scroll";
+"capture.long.capturing" = "Scroll the page — stitching automatically…";
+"capture.long.height" = "Stitched %lld px";
+"capture.long.bottom" = "Reached the bottom — click Finish";
+"capture.long.copied" = "Long screenshot copied";
+"capture.long.preview" = "Long Screenshot Preview";
+"capture.long.failed" = "Long capture failed";

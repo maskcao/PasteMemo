@@ -153,6 +153,12 @@
 "editor.pin.done" = "Am Bildschirm angeheftet";
 "editor.pin.close" = "Angeheftetes Bild schließen";
 "editor.tool.crop" = "Zuschneiden";
+"editor.tool.shape" = "Form";
+"editor.more" = "Mehr";
+"editor.size.small" = "Klein";
+"editor.size.medium" = "Mittel";
+"editor.size.large" = "Groß";
+"editor.size.theme" = "Design";
 "editor.undo" = "Widerrufen";
 "editor.redo" = "Wiederholen";
 "action.assignGroup" = "Gruppe zuweisen";
@@ -552,9 +558,7 @@
 "relay.collapse" = "Ausblenden";
 "relay.content.truncated" = "…(Inhalt zu groß, gekürzt)";
 "relay.alert.title" = "Relay-Modus aktiviert";
-"relay.alert.message" = "Schnelles Einfügen ist pausiert. Kopierte Inhalte werden der Relay-Warteschlange hinzugefügt.
-
-Verwenden Sie %@ zum Einfügen.";
+"relay.alert.message" = "Schnelles Einfügen ist pausiert. Kopierte Inhalte werden der Relay-Warteschlange hinzugefügt.\n\nVerwenden Sie %@ zum Einfügen.";
 "relay.alert.ok" = "Verstanden";
 "relay.alert.dontShowAgain" = "Nicht mehr anzeigen";
 "relay.settings.pasteKey" = "Relay-Einfüge-Tastenkürzel";
@@ -1238,3 +1242,16 @@ Verwenden Sie %@ zum Einfügen.";
 "merge.undo.toast" = "%d Einträge zusammengeführt";
 "rule.undo.toast" = "„%@“ ausgeführt";
 "edit.undo.toast" = "Gespeichert";
+
+// 长截图（对齐 FloGravity 截图模块）
+"capture.mode.screenshot" = "Screenshot";
+"capture.mode.long" = "Langbild-Screenshot";
+"capture.long.start" = "Aufnahme starten";
+"capture.long.finish" = "Fertig";
+"capture.long.autoscroll" = "Automatisch scrollen";
+"capture.long.capturing" = "Seite scrollen – wird automatisch zusammengefügt…";
+"capture.long.height" = "%lld px zusammengefügt";
+"capture.long.bottom" = "Seitenende erreicht – auf „Fertig“ klicken";
+"capture.long.copied" = "Langbild-Screenshot kopiert";
+"capture.long.preview" = "Langbild-Vorschau";
+"capture.long.failed" = "Langbild-Aufnahme fehlgeschlagen";
