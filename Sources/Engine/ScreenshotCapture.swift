@@ -11,6 +11,7 @@ final class ScreenshotCapture {
     private var isCapturing = false
     private var countdownWindows: [NSWindow] = []
     private var countdownRemaining = 0
+    private var countdownTimer: Timer?
 
     /// 延时截图秒数（0 = 关闭），More 菜单设置（对齐 FloGravity CaptureDelayDurationPicker）
     static var delaySeconds: Int {
@@ -77,17 +78,18 @@ final class ScreenshotCapture {
             window.makeKeyAndOrderFront(nil)
             countdownWindows.append(window)
         }
-        Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] timer in
+        countdownTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             Task { @MainActor in
-                self?.tickCountdown(timer)
+                self?.tickCountdown()
             }
         }
     }
 
-    private func tickCountdown(_ timer: Timer) {
+    private func tickCountdown() {
         countdownRemaining -= 1
         if countdownRemaining <= 0 {
-            timer.invalidate()
+            countdownTimer?.invalidate()
+            countdownTimer = nil
             countdownWindows.forEach { $0.orderOut(nil) }
             countdownWindows.removeAll()
             isCapturing = false
