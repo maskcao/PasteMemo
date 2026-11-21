@@ -3027,6 +3027,7 @@ final class LongCaptureHUD: NSPanel {
 }
 
 /// NSButton 需要 target-action 桥接闭包的最小容器。
+@MainActor
 final class ClosureTarget: NSObject {
     static let shared = ClosureTarget()
     var finishHandler: (() -> Void)?
@@ -3067,6 +3068,7 @@ final class ClosureTarget: NSObject {
 
 // MARK: - 长截图预览（完成后预览长图，复制或保存——对齐 FloGravity 流程）
 
+@MainActor
 final class LongCapturePreview {
     @discardableResult
     static func present(pngData: Data) -> NSWindow? {
