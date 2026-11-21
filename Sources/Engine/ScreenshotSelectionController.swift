@@ -72,6 +72,7 @@ final class ScreenshotSelectionController: NSObject {
     }
 
     private func closeAll() {
+        ToolbarButton.dismissHoverTip()
         panels.forEach { $0.orderOut(nil) }
         panels.removeAll()
         isActive = false
@@ -1266,12 +1267,6 @@ final class ScreenshotSelectionSurfaceView: NSView {
                 : AnnotationStyle.fontSize(imageWidth: imageWidth) * AnnotationStyle.textScales[a.weightIndex]
             let font = NSFont.systemFont(ofSize: fontSize, weight: .semibold)
             let alpha = a.opacity > 0 ? a.opacity : 1
-            // 阴影 = 底下一层偏移的深色拷贝
-            let shadowAttrs: [NSAttributedString.Key: Any] = [
-                .font: font,
-                .foregroundColor: NSColor.black.withAlphaComponent(0.35 * alpha),
-            ]
-            (a.text as NSString).draw(at: CGPoint(x: a.start.x + stroke * 0.5, y: a.start.y + stroke * 0.5), withAttributes: shadowAttrs)
             let attrs: [NSAttributedString.Key: Any] = [
                 .font: font,
                 .foregroundColor: color.withAlphaComponent(alpha),
@@ -1420,19 +1415,19 @@ final class SelectionToolbar: NSVisualEffectView {
             add(tag, .symbol(symbol), tooltip)
         }
 
-        _ = add(0, "circle.lefthalf.filled", L10n.tr("editor.tool.pointer"))
+        _ = add(0, .pointerGlyph, L10n.tr("editor.tool.pointer"))
         stack.addArrangedSubview(Self.divider())
-        _ = add(1, "rectangle", L10n.tr("editor.tool.rectangle"))
+        _ = add(1, .rectangleGlyph, L10n.tr("editor.tool.rectangle"))
         _ = add(2, "circle", L10n.tr("editor.tool.ellipse"))
-        _ = add(3, "arrow.up.right", L10n.tr("editor.tool.arrow"))
-        _ = add(4, "pencil", L10n.tr("editor.tool.pen"))
-        _ = add(5, "square.grid.2x2.fill", L10n.tr("editor.tool.mosaic"))
+        _ = add(3, .arrowGlyph, L10n.tr("editor.tool.arrow"))
+        _ = add(4, .pencilGlyph, L10n.tr("editor.tool.pen"))
+        _ = add(5, .mosaicGlyph, L10n.tr("editor.tool.mosaic"))
         _ = add(6, .textGlyph, L10n.tr("editor.tool.text"))
         stack.addArrangedSubview(Self.divider())
         _ = add(7, .badgeGlyph, L10n.tr("editor.tool.stepBadge"))
         _ = add(8, .highlightGlyph, L10n.tr("editor.tool.highlighter"))
-        ocrButton = add(9, "text.viewfinder", L10n.tr("editor.tool.ocr"))
-        pinButton = add(10, "pin", L10n.tr("editor.tool.pin"))
+        ocrButton = add(9, .ocrGlyph, L10n.tr("editor.tool.ocr"))
+        pinButton = add(10, .pinGlyph, L10n.tr("editor.tool.pin"))
         stack.addArrangedSubview(Self.divider())
 
         undoButton = add(301, "arrow.uturn.backward", L10n.tr("editor.undo"))
@@ -1847,6 +1842,13 @@ final class ToolbarButton: NSButton {
         case textGlyph
         case badgeGlyph
         case highlightGlyph
+        case pointerGlyph
+        case rectangleGlyph
+        case arrowGlyph
+        case pencilGlyph
+        case mosaicGlyph
+        case ocrGlyph
+        case pinGlyph
     }
 
     private let look: Look
@@ -1858,6 +1860,7 @@ final class ToolbarButton: NSButton {
     }
     private var hovering = false
     private var hoverTrackingArea: NSTrackingArea?
+    private var hoverTipWork: DispatchWorkItem?
 
     init(look: Look, tooltip: String, target: AnyObject?, action: Selector) {
         self.look = look
@@ -1896,11 +1899,33 @@ final class ToolbarButton: NSButton {
     override func mouseEntered(with event: NSEvent) {
         hovering = true
         needsDisplay = true
+        hoverTipWork?.cancel()
+        guard let text = toolTip, !text.isEmpty else { return }
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, self.hovering, let window = self.window else { return }
+            let rect = window.convertToScreen(self.convert(self.bounds, to: nil))
+            HoverTipPanel.shared.show(text: text, near: rect)
+        }
+        hoverTipWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: work)
     }
 
     override func mouseExited(with event: NSEvent) {
         hovering = false
         needsDisplay = true
+        hoverTipWork?.cancel()
+        hoverTipWork = nil
+        HoverTipPanel.shared.hide()
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        hoverTipWork?.cancel()
+        HoverTipPanel.shared.hide()
+        super.mouseDown(with: event)
+    }
+
+    static func dismissHoverTip() {
+        HoverTipPanel.shared.hide()
     }
 
     override func draw(_ dirtyRect: NSRect) {
@@ -1961,6 +1986,20 @@ final class ToolbarButton: NSButton {
             drawBadgeGlyph(tint: tint)
         case .highlightGlyph:
             drawHighlightGlyph(tint: tint)
+        case .pointerGlyph:
+            drawPointerGlyph(tint: tint)
+        case .rectangleGlyph:
+            drawRectangleGlyph(tint: tint)
+        case .arrowGlyph:
+            drawArrowGlyph(tint: tint)
+        case .pencilGlyph:
+            drawPencilGlyph(tint: tint)
+        case .mosaicGlyph:
+            drawMosaicGlyph(tint: tint)
+        case .ocrGlyph:
+            drawOCRGlyph(tint: tint)
+        case .pinGlyph:
+            drawPinGlyph(tint: tint)
         }
         NSGraphicsContext.current?.cgContext.setAlpha(1)
     }
@@ -1998,6 +2037,188 @@ final class ToolbarButton: NSButton {
             path.line(to: CGPoint(x: bounds.midX + 1 + offset, y: bounds.midY - 6))
             path.stroke()
         }
+    }
+
+    // 以下图标按参考图矢量绘制（原生 SF Symbol 形态和参考不一致）
+
+    private func drawPointerGlyph(tint: NSColor) {
+        let cx = bounds.midX, cy = bounds.midY
+        let ring = NSBezierPath(ovalIn: NSRect(x: cx - 8, y: cy - 8, width: 16, height: 16))
+        ring.lineWidth = 2
+        tint.setStroke()
+        ring.stroke()
+        // 内侧左侧月牙形填充：外圆挖掉一块形成凹口
+        let blob = NSBezierPath(ovalIn: NSRect(x: cx - 8.2, y: cy - 4.4, width: 9.6, height: 9.6))
+        blob.append(NSBezierPath(ovalIn: NSRect(x: cx - 5.6, y: cy - 6.6, width: 5.4, height: 5.4)))
+        blob.windingRule = .evenOdd
+        tint.setFill()
+        blob.fill()
+    }
+
+    private func drawRectangleGlyph(tint: NSColor) {
+        let rect = NSRect(x: bounds.midX - 7.5, y: bounds.midY - 7.5, width: 15, height: 15)
+        let path = NSBezierPath(roundedRect: rect, xRadius: 4.2, yRadius: 4.2)
+        path.lineWidth = 2
+        tint.setStroke()
+        path.stroke()
+    }
+
+    private func drawArrowGlyph(tint: NSColor) {
+        // 参考图是开放 V 形箭头，不是实心三角
+        let start = CGPoint(x: bounds.midX - 7, y: bounds.midY + 7)
+        let end = CGPoint(x: bounds.midX + 7, y: bounds.midY - 7)
+        let angle = atan2(end.y - start.y, end.x - start.x)
+        let headLength: CGFloat = 7.5
+        let path = NSBezierPath()
+        path.lineWidth = 2
+        path.lineCapStyle = .round
+        path.lineJoinStyle = .round
+        path.move(to: start)
+        path.line(to: end)
+        path.move(to: end)
+        path.line(to: CGPoint(x: end.x - headLength * cos(angle - 0.55), y: end.y - headLength * sin(angle - 0.55)))
+        path.move(to: end)
+        path.line(to: CGPoint(x: end.x - headLength * cos(angle + 0.55), y: end.y - headLength * sin(angle + 0.55)))
+        tint.setStroke()
+        path.stroke()
+    }
+
+    private func drawPencilGlyph(tint: NSColor) {
+        let cx = bounds.midX, cy = bounds.midY
+        let dir = CGPoint(x: 0.7071, y: -0.7071)
+        let perp = CGPoint(x: 0.7071, y: 0.7071)
+        let halfWidth: CGFloat = 2.8
+        let tip = CGPoint(x: cx - 8.5, y: cy + 8.5)
+        func point(_ along: CGFloat, _ across: CGFloat) -> CGPoint {
+            CGPoint(
+                x: tip.x + dir.x * along + perp.x * across,
+                y: tip.y + dir.y * along + perp.y * across
+            )
+        }
+        let outline = NSBezierPath()
+        outline.move(to: tip)
+        outline.line(to: point(4.5, halfWidth))
+        outline.line(to: point(20, halfWidth))
+        outline.line(to: point(20, -halfWidth))
+        outline.line(to: point(4.5, -halfWidth))
+        outline.close()
+        outline.lineWidth = 1.8
+        outline.lineJoinStyle = .round
+        tint.setStroke()
+        outline.stroke()
+        let ferrule = NSBezierPath()
+        ferrule.lineWidth = 1.8
+        ferrule.lineCapStyle = .round
+        ferrule.move(to: point(4.5, -(halfWidth - 0.6)))
+        ferrule.line(to: point(4.5, halfWidth - 0.6))
+        tint.setStroke()
+        ferrule.stroke()
+    }
+
+    private func drawMosaicGlyph(tint: NSColor) {
+        let cx = bounds.midX, cy = bounds.midY
+        let frame = NSRect(x: cx - 8, y: cy - 8, width: 16, height: 16)
+        let framePath = NSBezierPath(roundedRect: frame, xRadius: 4.5, yRadius: 4.5)
+        framePath.lineWidth = 2
+        tint.setStroke()
+        framePath.stroke()
+        tint.setFill()
+        NSBezierPath(
+            roundedRect: NSRect(x: frame.minX + 2.9, y: frame.minY + 2.9, width: 6.8, height: 6.8),
+            xRadius: 1.4, yRadius: 1.4
+        ).fill()
+        NSBezierPath(
+            roundedRect: NSRect(x: frame.maxX - 2.6 - 5.8, y: frame.maxY - 2.6 - 5.8, width: 5.8, height: 5.8),
+            xRadius: 1.2, yRadius: 1.2
+        ).fill()
+    }
+
+    private func drawOCRGlyph(tint: NSColor) {
+        let cx = bounds.midX, cy = bounds.midY
+        let halfW: CGFloat = 9, halfH: CGFloat = 8.5
+        let cornerLen: CGFloat = 5.5
+        let radius: CGFloat = 3
+        let path = NSBezierPath()
+        path.lineWidth = 1.8
+        path.lineCapStyle = .round
+        path.lineJoinStyle = .round
+
+        func corner(_ x: CGFloat, _ y: CGFloat, _ dx: CGFloat, _ dy: CGFloat) {
+            path.move(to: CGPoint(x: x, y: y + dy * cornerLen))
+            path.line(to: CGPoint(x: x, y: y + dy * radius))
+            path.curve(
+                to: CGPoint(x: x + dx * radius, y: y),
+                controlPoint1: CGPoint(x: x, y: y),
+                controlPoint2: CGPoint(x: x, y: y)
+            )
+            path.line(to: CGPoint(x: x + dx * cornerLen, y: y))
+        }
+        corner(cx - halfW, cy - halfH, 1, 1)
+        corner(cx + halfW, cy - halfH, -1, 1)
+        corner(cx - halfW, cy + halfH, 1, -1)
+        corner(cx + halfW, cy + halfH, -1, -1)
+        tint.setStroke()
+        path.stroke()
+
+        // 衬线 T
+        let t = NSBezierPath()
+        t.lineWidth = 2.2
+        t.lineCapStyle = .butt
+        t.lineJoinStyle = .round
+        t.move(to: CGPoint(x: cx - 4.4, y: cy - 4.6))
+        t.line(to: CGPoint(x: cx + 4.4, y: cy - 4.6))
+        t.move(to: CGPoint(x: cx - 4.4, y: cy - 4.6))
+        t.line(to: CGPoint(x: cx - 4.4, y: cy - 3.2))
+        t.move(to: CGPoint(x: cx + 4.4, y: cy - 4.6))
+        t.line(to: CGPoint(x: cx + 4.4, y: cy - 3.2))
+        t.move(to: CGPoint(x: cx, y: cy - 4.6))
+        t.line(to: CGPoint(x: cx, y: cy + 5))
+        t.move(to: CGPoint(x: cx - 2.8, y: cy + 5))
+        t.line(to: CGPoint(x: cx + 2.8, y: cy + 5))
+        t.stroke()
+    }
+
+    private func drawPinGlyph(tint: NSColor) {
+        let cx = bounds.midX, cy = bounds.midY
+        let topY = cy - 8, bottomY = cy + 3
+        let path = NSBezierPath()
+        path.lineWidth = 1.9
+        path.lineCapStyle = .round
+        path.lineJoinStyle = .round
+        // 顶杆
+        path.move(to: CGPoint(x: cx - 6.5, y: topY))
+        path.line(to: CGPoint(x: cx + 6.5, y: topY))
+        // 左侧：内收到腰再外撇
+        path.move(to: CGPoint(x: cx - 6.5, y: topY))
+        path.curve(
+            to: CGPoint(x: cx - 3.3, y: cy - 0.5),
+            controlPoint1: CGPoint(x: cx - 5.4, y: topY + 2.2),
+            controlPoint2: CGPoint(x: cx - 4.2, y: cy - 3)
+        )
+        path.curve(
+            to: CGPoint(x: cx - 6, y: bottomY),
+            controlPoint1: CGPoint(x: cx - 2.5, y: cy + 1.2),
+            controlPoint2: CGPoint(x: cx - 3.8, y: bottomY - 1.4)
+        )
+        // 右侧镜像
+        path.move(to: CGPoint(x: cx + 6.5, y: topY))
+        path.curve(
+            to: CGPoint(x: cx + 3.3, y: cy - 0.5),
+            controlPoint1: CGPoint(x: cx + 5.4, y: topY + 2.2),
+            controlPoint2: CGPoint(x: cx + 4.2, y: cy - 3)
+        )
+        path.curve(
+            to: CGPoint(x: cx + 6, y: bottomY),
+            controlPoint1: CGPoint(x: cx + 2.5, y: cy + 1.2),
+            controlPoint2: CGPoint(x: cx + 3.8, y: bottomY - 1.4)
+        )
+        // 底杆 + 针
+        path.move(to: CGPoint(x: cx - 6, y: bottomY))
+        path.line(to: CGPoint(x: cx + 6, y: bottomY))
+        path.move(to: CGPoint(x: cx, y: bottomY))
+        path.line(to: CGPoint(x: cx, y: cy + 6.5))
+        tint.setStroke()
+        path.stroke()
     }
 
     private func drawArrowSample(_ index: Int, tint: NSColor) {
@@ -2058,6 +2279,55 @@ final class ToolbarButton: NSButton {
         let config = NSImage.SymbolConfiguration(pointSize: 15, weight: .regular)
             .applying(.init(paletteColors: [color]))
         return base.withSymbolConfiguration(config) ?? base
+    }
+}
+
+/// 悬停提示：原生 tooltip 窗口层级很低，会被 screenSaver 级截图浮层盖住，所以自绘一层置顶小窗。
+@MainActor
+final class HoverTipPanel: NSPanel {
+    static let shared = HoverTipPanel()
+
+    private let label = NSTextField(labelWithString: "")
+
+    private init() {
+        super.init(contentRect: .zero, styleMask: .borderless, backing: .buffered, defer: false)
+        level = NSWindow.Level(rawValue: NSWindow.Level.screenSaver.rawValue + 1)
+        isOpaque = false
+        backgroundColor = .clear
+        hasShadow = true
+        ignoresMouseEvents = true
+        hidesOnDeactivate = false
+        isReleasedWhenClosed = false
+        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
+        label.font = .systemFont(ofSize: 11.5, weight: .medium)
+        label.textColor = .white
+        let container = NSView()
+        container.wantsLayer = true
+        container.layer?.backgroundColor = NSColor(white: 0.09, alpha: 0.92).cgColor
+        container.layer?.cornerRadius = 5
+        container.addSubview(label)
+        contentView = container
+    }
+
+    func show(text: String, near buttonRect: NSRect) {
+        label.stringValue = text
+        label.sizeToFit()
+        let padX: CGFloat = 9, padY: CGFloat = 5
+        let size = NSSize(width: ceil(label.frame.width) + padX * 2, height: ceil(label.frame.height) + padY * 2)
+        label.setFrameOrigin(NSPoint(x: padX, y: padY))
+
+        let screen = NSScreen.screens.first { $0.frame.contains(NSPoint(x: buttonRect.midX, y: buttonRect.midY)) } ?? NSScreen.main
+        var origin = NSPoint(x: buttonRect.midX - size.width / 2, y: buttonRect.minY - size.height - 7)
+        if let frame = screen?.frame {
+            if origin.y < frame.minY + 4 { origin.y = buttonRect.maxY + 7 }
+            origin.x = min(max(origin.x, frame.minX + 4), frame.maxX - size.width - 4)
+        }
+        setFrame(NSRect(origin: origin, size: size), display: true)
+        orderFrontRegardless()
+    }
+
+    func hide() {
+        orderOut(nil)
     }
 }
 
