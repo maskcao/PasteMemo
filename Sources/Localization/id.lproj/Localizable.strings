@@ -1243,3 +1243,20 @@
 "capture.long.copied" = "Tangkapan panjang disalin";
 "capture.long.preview" = "Pratinjau Tangkapan Panjang";
 "capture.long.failed" = "Tangkapan panjang gagal";
+
+// 截图主流程补齐（延时 / 二维码 / 比例约束 / 圆角矩形 / 最近选区）
+"editor.tool.roundedRect" = "Persegi Bulat";
+"editor.tool.qr" = "Deteksi Kode QR";
+"capture.qr.copied" = "Konten kode QR disalin";
+"capture.qr.none" = "Tidak ada kode QR terdeteksi";
+"editor.constraint" = "Rasio Seleksi";
+"editor.constraint.free" = "Bebas";
+"editor.constraint.1_1" = "1:1";
+"editor.constraint.4_3" = "4:3";
+"editor.constraint.16_9" = "16:9";
+"screenshot.delay" = "Tangkapan Tertunda";
+"screenshot.delay.off" = "Matikan";
+"screenshot.delay.3" = "3 detik";
+"screenshot.delay.5" = "5 detik";
+"screenshot.delay.10" = "10 detik";
+"editor.saved.named" = "Disimpan “%@”";

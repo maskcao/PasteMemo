@@ -1,6 +1,7 @@
 import AppKit
 import CoreGraphics
 import UniformTypeIdentifiers
+import Vision
 
 /// 采集模式，对齐 FloGravity 的选区类型切换（Tab）：普通截图 / 滚动长截图。
 enum CaptureMode {
@@ -76,7 +77,29 @@ final class ScreenshotSelectionController: NSObject {
             panels.append(panel)
             panel.showPanel()
         }
+        restoreRecentSelection()
         return true
+    }
+
+    /// 对齐 FloGravity CaptureRecentSelectionStore：把上次框选的选区恢复为初始选区
+    private func restoreRecentSelection() {
+        let saved = UserDefaults.standard.string(forKey: "lastSelectionFrame") ?? ""
+        guard !saved.isEmpty else { return }
+        let global = NSRectFromString(saved)
+        for panel in panels {
+            let frame = panel.frame
+            let local = CGRect(
+                x: global.minX - frame.minX,
+                y: frame.maxY - global.maxY,
+                width: global.width,
+                height: global.height
+            )
+            guard local.minX >= -1, local.minY >= -1,
+                  local.maxX <= frame.width + 1, local.maxY <= frame.height + 1,
+                  let surface = panel.contentView as? ScreenshotSelectionSurfaceView else { continue }
+            surface.restoreSelection(local.integral)
+            break
+        }
     }
 
     func confirmSelection(pngData: Data) {
@@ -243,6 +266,12 @@ final class ScreenshotSelectionSurfaceView: NSView {
         NSColor(red: 0.10, green: 0.10, blue: 0.12, alpha: 1),
     ]
     static var customPaletteColor = NSColor(red: 0.68, green: 0.32, blue: 0.88, alpha: 1)
+
+    /// 选区比例约束（"free" / "1:1" / "4:3" / "16:9"），More 菜单设置并持久化
+    static var constraintKey: String {
+        get { UserDefaults.standard.string(forKey: "selectionConstraintRatio") ?? "free" }
+        set { UserDefaults.standard.set(newValue, forKey: "selectionConstraintRatio") }
+    }
 
     init(frame: NSRect, image: NSImage, pixelScale: CGFloat, screen: NSScreen, owner: ScreenshotSelectionController) {
         self.image = image
@@ -473,7 +502,11 @@ final class ScreenshotSelectionSurfaceView: NSView {
         switch dragMode {
         case .drawing:
             var rect = Self.normalizedRect(from: dragOrigin, to: point)
-            if event.modifierFlags.contains(.shift) {
+            let ratio = Self.constraintRatio
+            if let ratio, !event.modifierFlags.contains(.option) {
+                // 显式比例约束（Option 临时强制自由）；以拖拽起点为锚角按拖拽方向外扩
+                rect = Self.rect(rect, applyingRatio: ratio, origin: dragOrigin, toward: point)
+            } else if event.modifierFlags.contains(.shift) {
                 // Shift：正方形约束
                 let side = max(rect.width, rect.height)
                 rect = CGRect(
@@ -515,6 +548,9 @@ final class ScreenshotSelectionSurfaceView: NSView {
         if dragMode == .drawing, let sel = selection,
            sel.width < 6 || sel.height < 6 {
             selection = nil
+        }
+        if dragMode == .drawing, let sel = selection, sel.width >= 6, sel.height >= 6 {
+            recordRecentSelection(sel)
         }
         dragMode = .none
         resizeEdge = .none
@@ -772,6 +808,11 @@ final class ScreenshotSelectionSurfaceView: NSView {
         case 11:
             if captureMode == .screenshot { showMoreMenu(from: control) }
         case 2: if captureMode == .screenshot { toggleTool(.ellipse) }
+        case 603: if captureMode == .screenshot { toggleTool(.roundedRect) }
+        case 620...623:
+            Self.constraintKey = ["free", "1:1", "4:3", "16:9"][control.tag - 620]
+        case 630...633:
+            ScreenshotCapture.setDelayPreset(control.tag - 630)
         case 3: if captureMode == .screenshot { toggleTool(.arrow) }
         case 4: if captureMode == .screenshot { toggleTool(.pen) }
         case 5: if captureMode == .screenshot { toggleTool(.mosaic) }
@@ -779,6 +820,7 @@ final class ScreenshotSelectionSurfaceView: NSView {
         case 7: if captureMode == .screenshot { toggleTool(.stepBadge) }
         case 8: if captureMode == .screenshot { toggleTool(.highlighter) }
         case 9: if captureMode == .screenshot { extractText() }
+        case 13: if captureMode == .screenshot { recognizeQRCode() }
         case 10: if captureMode == .screenshot { pinSelection() }
         case 511...514:
             widthPreset = control.tag - 511
@@ -840,6 +882,34 @@ final class ScreenshotSelectionSurfaceView: NSView {
             item.state = activeTool == kind ? .on : .off
             menu.addItem(item)
         }
+
+        // 选区比例约束（对齐 FloGravity CaptureSelectionConstraintPicker）
+        let constraintMenu = NSMenu()
+        for (index, key) in ["editor.constraint.free", "editor.constraint.1_1", "editor.constraint.4_3", "editor.constraint.16_9"].enumerated() {
+            let item = NSMenuItem(title: L10n.tr(key), action: #selector(toolbarAction(_:)), keyEquivalent: "")
+            item.target = self
+            item.tag = 620 + index
+            item.state = Self.constraintKey == ["free", "1:1", "4:3", "16:9"][index] ? .on : .off
+            constraintMenu.addItem(item)
+        }
+        let constraintItem = NSMenuItem(title: L10n.tr("editor.constraint"), action: nil, keyEquivalent: "")
+        constraintItem.submenu = constraintMenu
+        menu.addItem(constraintItem)
+
+        // 延时截图（对齐 FloGravity CaptureDelayDurationPicker）
+        let delayMenu = NSMenu()
+        let delaySeconds = ScreenshotCapture.delaySeconds
+        for (index, key) in ["screenshot.delay.off", "screenshot.delay.3", "screenshot.delay.5", "screenshot.delay.10"].enumerated() {
+            let item = NSMenuItem(title: L10n.tr(key), action: #selector(toolbarAction(_:)), keyEquivalent: "")
+            item.target = self
+            item.tag = 630 + index
+            item.state = delaySeconds == [0, 3, 5, 10][index] ? .on : .off
+            delayMenu.addItem(item)
+        }
+        let delayItem = NSMenuItem(title: L10n.tr("screenshot.delay"), action: nil, keyEquivalent: "")
+        delayItem.submenu = delayMenu
+        menu.addItem(delayItem)
+
         menu.popUp(positioning: nil, at: NSPoint(x: 0, y: control.bounds.maxY + 4), in: control)
     }
 
@@ -1049,6 +1119,7 @@ final class ScreenshotSelectionSurfaceView: NSView {
         let result = owner?.runSavePanel(panel) ?? panel.runModal()
         if result == .OK, let url = panel.url {
             try? png.write(to: url)
+            ToastCenter.shared.show(ToastDescriptor(message: String(format: L10n.tr("editor.saved.named"), url.lastPathComponent), icon: .success))
         }
         window?.makeFirstResponder(self)
     }
@@ -1073,6 +1144,75 @@ final class ScreenshotSelectionSurfaceView: NSView {
         guard pixelRect.width >= 2, pixelRect.height >= 2,
               let cropped = cg.cropping(to: pixelRect) else { return nil }
         return NSBitmapImageRep(cgImage: cropped).representation(using: .png, properties: [:])
+    }
+
+    /// 选区比例约束值（宽/高）；free 返回 nil
+    static var constraintRatio: CGFloat? {
+        switch constraintKey {
+        case "1:1": return 1
+        case "4:3": return 4.0 / 3.0
+        case "16:9": return 16.0 / 9.0
+        default: return nil
+        }
+    }
+
+    /// 以 origin 为锚角、按拖拽方向外扩出指定宽高比的矩形
+    static func rect(_ rect: CGRect, applyingRatio ratio: CGFloat, origin: CGPoint, toward point: CGPoint) -> CGRect {
+        let dx = point.x - origin.x
+        let dy = point.y - origin.y
+        let width = max(abs(dx), abs(dy) * ratio)
+        let height = width / ratio
+        return CGRect(
+            x: dx < 0 ? origin.x - width : origin.x,
+            y: dy < 0 ? origin.y - height : origin.y,
+            width: width,
+            height: height
+        )
+    }
+
+    /// 记录最近选区（全局屏幕坐标，顶左原点），下次截图自动恢复（对齐 CaptureRecentSelectionStore）
+    private func recordRecentSelection(_ rect: CGRect) {
+        guard let win = window else { return }
+        let frame = win.screen?.frame ?? win.frame
+        let global = CGRect(
+            x: frame.minX + rect.minX,
+            y: frame.maxY - rect.maxY,
+            width: rect.width,
+            height: rect.height
+        )
+        UserDefaults.standard.set(NSStringFromRect(global.integral), forKey: "lastSelectionFrame")
+    }
+
+    /// 恢复最近选区（controller.begin 之后调用）
+    func restoreSelection(_ rect: CGRect) {
+        selection = rect
+        syncToolbar()
+        needsDisplay = true
+    }
+
+    /// 识别二维码：选区干净底图跑 Vision 条码识别，内容进剪贴板（对齐 FloGravity「识别二维码」）
+    private func recognizeQRCode() {
+        guard selection != nil, let png = croppedBasePNG() else { return }
+        guard let cg = NSImage(data: png)?.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
+            showChip(L10n.tr("capture.qr.none"))
+            return
+        }
+        let request = VNDetectBarcodesRequest()
+        let handler = VNImageRequestHandler(cgImage: cg, options: [:])
+        do {
+            try handler.perform([request])
+            let payloads = request.results?.compactMap(\.payloadStringValue) ?? []
+            if let payload = payloads.first {
+                let pasteboard = NSPasteboard.general
+                pasteboard.clearContents()
+                pasteboard.setString(payload, forType: .string)
+                showChip(L10n.tr("capture.qr.copied"))
+            } else {
+                showChip(L10n.tr("capture.qr.none"))
+            }
+        } catch {
+            showChip(L10n.tr("capture.qr.none"))
+        }
     }
 
     private func extractText() {
@@ -1638,6 +1778,7 @@ final class SelectionToolbar: NSVisualEffectView {
     private var copyButton: ToolbarButton!
     private var saveButton: ToolbarButton!
     private var ocrButton: ToolbarButton!
+    private var qrButton: ToolbarButton!
     private var pinButton: ToolbarButton!
     private var shapeButton: ToolbarButton!
     private var currentShapeAsset = "Shape"
@@ -1712,6 +1853,7 @@ final class SelectionToolbar: NSVisualEffectView {
         _ = add(11, .assetWithChevron("More"), L10n.tr("editor.more"))
         stack.addArrangedSubview(Self.divider())
         ocrButton = add(9, .asset("OCR"), L10n.tr("editor.tool.ocr"))
+        qrButton = add(13, .asset("QRCode"), L10n.tr("editor.tool.qr"))
         stack.addArrangedSubview(Self.divider())
 
         undoButton = add(301, .asset("Undo"), L10n.tr("editor.undo"))
@@ -1763,9 +1905,11 @@ final class SelectionToolbar: NSVisualEffectView {
         copyButton.isEnabled = hasSelection
         saveButton.isEnabled = hasSelection
         ocrButton.isEnabled = hasSelection
+        qrButton.isEnabled = hasSelection
         pinButton.isEnabled = hasSelection
         switch tool {
         case .rectangle: setShapeAsset("ShapeRectangle")
+        case .roundedRect: setShapeAsset("ShapeRoundedRectangle")
         case .ellipse: setShapeAsset("ShapeEllipse")
         default: break
         }
@@ -2188,7 +2332,7 @@ final class PopupShapeButton: NSButton {
 
     init(current: ScreenshotAnnotation.Kind, target: AnyObject?, action: Selector) {
         let menu = NSMenu()
-        for (tag, key) in [(601, "editor.tool.rectangle"), (602, "editor.tool.ellipse")] {
+        for (tag, key) in [(601, "editor.tool.rectangle"), (603, "editor.tool.roundedRect"), (602, "editor.tool.ellipse")] {
             let item = NSMenuItem(title: L10n.tr(key), action: action, keyEquivalent: "")
             item.target = target
             item.tag = tag

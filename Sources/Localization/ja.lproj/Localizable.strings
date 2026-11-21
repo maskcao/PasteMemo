@@ -1269,3 +1269,20 @@
 "capture.long.copied" = "長いスクリーンショットをコピーしました";
 "capture.long.preview" = "長いスクリーンショットのプレビュー";
 "capture.long.failed" = "長いスクリーンショットに失敗しました";
+
+// 截图主流程补齐（延时 / 二维码 / 比例约束 / 圆角矩形 / 最近选区）
+"editor.tool.roundedRect" = "角丸長方形";
+"editor.tool.qr" = "QRコードを認識";
+"capture.qr.copied" = "QRコードの内容をコピーしました";
+"capture.qr.none" = "QRコードが見つかりません";
+"editor.constraint" = "選択範囲の比率";
+"editor.constraint.free" = "自由";
+"editor.constraint.1_1" = "1:1";
+"editor.constraint.4_3" = "4:3";
+"editor.constraint.16_9" = "16:9";
+"screenshot.delay" = "遅延スクリーンショット";
+"screenshot.delay.off" = "オフ";
+"screenshot.delay.3" = "3秒";
+"screenshot.delay.5" = "5秒";
+"screenshot.delay.10" = "10秒";
+"editor.saved.named" = "「%@」を保存しました";

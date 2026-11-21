@@ -1273,3 +1273,20 @@
 "capture.long.copied" = "Capture longue copiée";
 "capture.long.preview" = "Aperçu de la capture longue";
 "capture.long.failed" = "Échec de la capture longue";
+
+// 截图主流程补齐（延时 / 二维码 / 比例约束 / 圆角矩形 / 最近选区）
+"editor.tool.roundedRect" = "Rectangle arrondi";
+"editor.tool.qr" = "Détecter le code QR";
+"capture.qr.copied" = "Contenu du code QR copié";
+"capture.qr.none" = "Aucun code QR détecté";
+"editor.constraint" = "Ratio de sélection";
+"editor.constraint.free" = "Libre";
+"editor.constraint.1_1" = "1:1";
+"editor.constraint.4_3" = "4:3";
+"editor.constraint.16_9" = "16:9";
+"screenshot.delay" = "Capture différée";
+"screenshot.delay.off" = "Désactivé";
+"screenshot.delay.3" = "3 secondes";
+"screenshot.delay.5" = "5 secondes";
+"screenshot.delay.10" = "10 secondes";
+"editor.saved.named" = "« %@ » enregistré";

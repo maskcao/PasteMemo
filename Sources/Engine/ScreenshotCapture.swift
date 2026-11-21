@@ -9,18 +9,96 @@ final class ScreenshotCapture {
     static let shared = ScreenshotCapture()
 
     private var isCapturing = false
+    private var countdownWindows: [NSWindow] = []
+    private var countdownRemaining = 0
+
+    /// 延时截图秒数（0 = 关闭），More 菜单设置（对齐 FloGravity CaptureDelayDurationPicker）
+    static var delaySeconds: Int {
+        get { UserDefaults.standard.integer(forKey: "screenshotDelaySeconds") }
+        set { UserDefaults.standard.set(newValue, forKey: "screenshotDelaySeconds") }
+    }
+
+    static func setDelayPreset(_ index: Int) {
+        delaySeconds = [0, 3, 5, 10][min(max(index, 0), 3)]
+    }
 
     func trigger() {
         guard !isCapturing else { return }
         if CGPreflightScreenCaptureAccess() {
-            // 自绘框选：确认后直接复制；begin 失败（拿不到冻结帧）回退系统框选
+            let delay = Self.delaySeconds
+            if delay > 0 {
+                isCapturing = true
+                showCountdown(seconds: delay)
+            } else {
+                // 自绘框选：确认后直接复制；begin 失败（拿不到冻结帧）回退系统框选
+                if ScreenshotSelectionController.shared.begin() {
+                    return
+                }
+                launchCapture()
+            }
+        } else {
+            CGRequestScreenCaptureAccess()
+            showPermissionAlert()
+        }
+    }
+
+    /// 延时倒计时：全屏半透明遮罩 + 中央大数字，结束后自动进入框选（对齐 FloGravity 延时截图）
+    private func showCountdown(seconds: Int) {
+        countdownWindows.removeAll()
+        countdownRemaining = seconds
+        for screen in NSScreen.screens {
+            let window = NSWindow(
+                contentRect: screen.frame,
+                styleMask: .borderless,
+                backing: .buffered,
+                defer: false
+            )
+            window.level = .screenSaver
+            window.isOpaque = false
+            window.backgroundColor = .clear
+            window.ignoresMouseEvents = false
+
+            let container = NSView(frame: NSRect(origin: .zero, size: screen.frame.size))
+            container.wantsLayer = true
+            container.layer?.backgroundColor = NSColor(white: 0, alpha: 0.25).cgColor
+
+            let label = NSTextField(labelWithString: String(seconds))
+            label.font = .monospacedDigitSystemFont(ofSize: 140, weight: .bold)
+            label.textColor = .white
+            label.frame = NSRect(
+                x: 0, y: 0,
+                width: screen.frame.width,
+                height: screen.frame.height
+            )
+            label.autoresizingMask = [.width, .height]
+            label.textAlignment = .center
+            container.addSubview(label)
+            window.contentView = container
+            window.makeKeyAndOrderFront(nil)
+            countdownWindows.append(window)
+        }
+        Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] timer in
+            Task { @MainActor in
+                self?.tickCountdown(timer)
+            }
+        }
+    }
+
+    private func tickCountdown(_ timer: Timer) {
+        countdownRemaining -= 1
+        if countdownRemaining <= 0 {
+            timer.invalidate()
+            countdownWindows.forEach { $0.orderOut(nil) }
+            countdownWindows.removeAll()
+            isCapturing = false
             if ScreenshotSelectionController.shared.begin() {
                 return
             }
             launchCapture()
         } else {
-            CGRequestScreenCaptureAccess()
-            showPermissionAlert()
+            for window in countdownWindows {
+                (window.contentView?.subviews.compactMap { $0 as? NSTextField }.first)?.stringValue = String(countdownRemaining)
+            }
         }
     }
 

@@ -1229,3 +1229,20 @@
 "capture.long.copied" = "長截圖已複製";
 "capture.long.preview" = "長截圖預覽";
 "capture.long.failed" = "長截圖失敗";
+
+// 截图主流程补齐（延时 / 二维码 / 比例约束 / 圆角矩形 / 最近选区）
+"editor.tool.roundedRect" = "圓角矩形";
+"editor.tool.qr" = "辨識二維碼";
+"capture.qr.copied" = "已複製二維碼內容";
+"capture.qr.none" = "未辨識到二維碼";
+"editor.constraint" = "選區比例";
+"editor.constraint.free" = "自由";
+"editor.constraint.1_1" = "1:1";
+"editor.constraint.4_3" = "4:3";
+"editor.constraint.16_9" = "16:9";
+"screenshot.delay" = "延時截圖";
+"screenshot.delay.off" = "關閉";
+"screenshot.delay.3" = "3 秒";
+"screenshot.delay.5" = "5 秒";
+"screenshot.delay.10" = "10 秒";
+"editor.saved.named" = "已儲存「%@」";

@@ -4,7 +4,7 @@ import SwiftUI
 /// 单条标注。几何用图片坐标（左上原点），跨预览/扁平化渲染一致。
 struct ScreenshotAnnotation: Identifiable {
     enum Kind {
-        case arrow, rectangle, ellipse, pen, highlighter, text, stepBadge, mosaic
+        case arrow, rectangle, roundedRect, ellipse, pen, highlighter, text, stepBadge, mosaic
     }
 
     let id = UUID()
@@ -142,6 +142,14 @@ enum AnnotationRenderer {
         case .rectangle:
             let inset = stroke / 2
             let path = Path(a.rect.insetBy(dx: inset, dy: inset))
+            context.stroke(path, with: .color(color), lineWidth: stroke)
+
+        case .roundedRect:
+            let inset = stroke / 2
+            let rect = a.rect.insetBy(dx: inset, dy: inset)
+            // 圆角随短边缩放（对齐 FloGravity 圆角矩形观感），上限 24pt
+            let radius = min(min(rect.width, rect.height) * 0.2, 24)
+            let path = Path(roundedRect: rect, cornerRadius: radius)
             context.stroke(path, with: .color(color), lineWidth: stroke)
 
         case .ellipse:

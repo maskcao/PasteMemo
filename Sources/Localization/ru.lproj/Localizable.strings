@@ -1243,3 +1243,20 @@
 "capture.long.copied" = "Длинный снимок скопирован";
 "capture.long.preview" = "Предпросмотр длинного снимка";
 "capture.long.failed" = "Не удалось создать длинный снимок";
+
+// 截图主流程补齐（延时 / 二维码 / 比例约束 / 圆角矩形 / 最近选区）
+"editor.tool.roundedRect" = "Прямоугольник со скруглением";
+"editor.tool.qr" = "Распознать QR-код";
+"capture.qr.copied" = "Содержимое QR-кода скопировано";
+"capture.qr.none" = "QR-код не найден";
+"editor.constraint" = "Пропорции выделения";
+"editor.constraint.free" = "Свободно";
+"editor.constraint.1_1" = "1:1";
+"editor.constraint.4_3" = "4:3";
+"editor.constraint.16_9" = "16:9";
+"screenshot.delay" = "Отложенный снимок";
+"screenshot.delay.off" = "Выключено";
+"screenshot.delay.3" = "3 секунды";
+"screenshot.delay.5" = "5 секунд";
+"screenshot.delay.10" = "10 секунд";
+"editor.saved.named" = "Сохранено «%@»";

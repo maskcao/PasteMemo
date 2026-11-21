@@ -1271,3 +1271,20 @@
 "capture.long.copied" = "긴 스크린샷이 복사되었습니다";
 "capture.long.preview" = "긴 스크린샷 미리보기";
 "capture.long.failed" = "긴 스크린샷에 실패했습니다";
+
+// 截图主流程补齐（延时 / 二维码 / 比例约束 / 圆角矩形 / 最近选区）
+"editor.tool.roundedRect" = "둥근 사각형";
+"editor.tool.qr" = "QR 코드 인식";
+"capture.qr.copied" = "QR 코드 내용이 복사되었습니다";
+"capture.qr.none" = "QR 코드를 찾을 수 없습니다";
+"editor.constraint" = "선택 영역 비율";
+"editor.constraint.free" = "자유";
+"editor.constraint.1_1" = "1:1";
+"editor.constraint.4_3" = "4:3";
+"editor.constraint.16_9" = "16:9";
+"screenshot.delay" = "지연 캡처";
+"screenshot.delay.off" = "끄기";
+"screenshot.delay.3" = "3초";
+"screenshot.delay.5" = "5초";
+"screenshot.delay.10" = "10초";
+"editor.saved.named" = "「%@」 저장됨";

@@ -1219,3 +1219,20 @@
 "capture.long.copied" = "Long screenshot copied";
 "capture.long.preview" = "Long Screenshot Preview";
 "capture.long.failed" = "Long capture failed";
+
+// 截图主流程补齐（延时 / 二维码 / 比例约束 / 圆角矩形 / 最近选区）
+"editor.tool.roundedRect" = "Rounded Rectangle";
+"editor.tool.qr" = "Detect QR Code";
+"capture.qr.copied" = "QR code content copied";
+"capture.qr.none" = "No QR code detected";
+"editor.constraint" = "Selection Ratio";
+"editor.constraint.free" = "Free";
+"editor.constraint.1_1" = "1:1";
+"editor.constraint.4_3" = "4:3";
+"editor.constraint.16_9" = "16:9";
+"screenshot.delay" = "Delayed Capture";
+"screenshot.delay.off" = "Off";
+"screenshot.delay.3" = "3 seconds";
+"screenshot.delay.5" = "5 seconds";
+"screenshot.delay.10" = "10 seconds";
+"editor.saved.named" = "Saved “%@”";

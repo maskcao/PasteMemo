@@ -1255,3 +1255,20 @@
 "capture.long.copied" = "Langbild-Screenshot kopiert";
 "capture.long.preview" = "Langbild-Vorschau";
 "capture.long.failed" = "Langbild-Aufnahme fehlgeschlagen";
+
+// 截图主流程补齐（延时 / 二维码 / 比例约束 / 圆角矩形 / 最近选区）
+"editor.tool.roundedRect" = "Abgerundetes Rechteck";
+"editor.tool.qr" = "QR-Code erkennen";
+"capture.qr.copied" = "QR-Code-Inhalt kopiert";
+"capture.qr.none" = "Kein QR-Code erkannt";
+"editor.constraint" = "Auswahlverhältnis";
+"editor.constraint.free" = "Frei";
+"editor.constraint.1_1" = "1:1";
+"editor.constraint.4_3" = "4:3";
+"editor.constraint.16_9" = "16:9";
+"screenshot.delay" = "Verzögerter Screenshot";
+"screenshot.delay.off" = "Aus";
+"screenshot.delay.3" = "3 Sekunden";
+"screenshot.delay.5" = "5 Sekunden";
+"screenshot.delay.10" = "10 Sekunden";
+"editor.saved.named" = "„%@“ gespeichert";
