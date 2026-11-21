@@ -17,6 +17,16 @@ struct ScreenshotAnnotation: Identifiable {
     var mosaicImage: NSImage?
     // pen / highlighter 的自由路径（图片坐标），其余 kind 不用
     var points: [CGPoint] = []
+    /// 0 = 用 weightIndex 查表（老数据）；>0 = 连续线宽倍率（工具条滑杆）
+    var strokeScale: CGFloat = 0
+    /// 0 = 老默认（荧光笔 0.35、马赛克 1）；>0 = 用户选的不透明度
+    var opacity: CGFloat = 0
+    /// 0 实心箭头、1 线框箭头（老默认）、2 直线
+    var arrowStyle: Int = 1
+    /// 0 方形、1 圆形、2 圆角
+    var mosaicStyle: Int = 0
+    /// 0 = 按图宽自适应（老数据）；>0 = 用户选的绝对字号
+    var fontSize: CGFloat = 0
 
     var rect: CGRect {
         if kind == .pen || kind == .highlighter, !points.isEmpty {
@@ -46,9 +56,11 @@ enum AnnotationStyle {
     static let palette: [Color] = [
         Color(red: 1.00, green: 0.27, blue: 0.23),
         Color(red: 1.00, green: 0.80, blue: 0.00),
-        Color(red: 0.20, green: 0.78, blue: 0.35),
         Color(red: 0.00, green: 0.48, blue: 1.00),
+        Color(red: 0.20, green: 0.78, blue: 0.35),
         Color(red: 0.10, green: 0.10, blue: 0.12),
+        Color(red: 0.56, green: 0.56, blue: 0.58),
+        Color.white,
     ]
 
     static let weights: [CGFloat] = [1.0, 1.8, 3.0]
@@ -78,30 +90,53 @@ enum AnnotationRenderer {
     }
 
     private static func drawOne(_ context: inout GraphicsContext, _ a: ScreenshotAnnotation, _ imageWidth: CGFloat) {
-        let stroke = AnnotationStyle.baseStroke(imageWidth: imageWidth) * AnnotationStyle.weights[a.weightIndex]
+        let weight = a.strokeScale > 0 ? a.strokeScale : AnnotationStyle.weights[a.weightIndex]
+        let stroke = AnnotationStyle.baseStroke(imageWidth: imageWidth) * weight
         let color = AnnotationStyle.palette[a.colorIndex]
 
         switch a.kind {
         case .arrow:
-            var shaft = Path()
-            shaft.move(to: a.start)
-            shaft.addLine(to: a.end)
-            context.stroke(shaft, with: .color(color), style: StrokeStyle(lineWidth: stroke, lineCap: .round))
-
             let angle = atan2(a.end.y - a.start.y, a.end.x - a.start.x)
             let headLength = max(stroke * 3.5, 10)
-            var head = Path()
-            head.move(to: a.end)
-            head.addLine(to: CGPoint(
-                x: a.end.x - headLength * cos(angle - 0.45),
-                y: a.end.y - headLength * sin(angle - 0.45)
-            ))
-            head.move(to: a.end)
-            head.addLine(to: CGPoint(
-                x: a.end.x - headLength * cos(angle + 0.45),
-                y: a.end.y - headLength * sin(angle + 0.45)
-            ))
-            context.stroke(head, with: .color(color), style: StrokeStyle(lineWidth: stroke, lineCap: .round, lineJoin: .round))
+            var shaft = Path()
+            shaft.move(to: a.start)
+            if a.arrowStyle == 0 {
+                shaft.addLine(to: CGPoint(
+                    x: a.end.x - headLength * 0.7 * cos(angle),
+                    y: a.end.y - headLength * 0.7 * sin(angle)
+                ))
+            } else {
+                shaft.addLine(to: a.end)
+            }
+            context.stroke(shaft, with: .color(color), style: StrokeStyle(lineWidth: stroke, lineCap: .round))
+
+            if a.arrowStyle == 0 {
+                var head = Path()
+                head.move(to: a.end)
+                head.addLine(to: CGPoint(
+                    x: a.end.x - headLength * cos(angle - 0.42),
+                    y: a.end.y - headLength * sin(angle - 0.42)
+                ))
+                head.addLine(to: CGPoint(
+                    x: a.end.x - headLength * cos(angle + 0.42),
+                    y: a.end.y - headLength * sin(angle + 0.42)
+                ))
+                head.closeSubpath()
+                context.fill(head, with: .color(color))
+            } else if a.arrowStyle == 1 {
+                var head = Path()
+                head.move(to: a.end)
+                head.addLine(to: CGPoint(
+                    x: a.end.x - headLength * cos(angle - 0.45),
+                    y: a.end.y - headLength * sin(angle - 0.45)
+                ))
+                head.move(to: a.end)
+                head.addLine(to: CGPoint(
+                    x: a.end.x - headLength * cos(angle + 0.45),
+                    y: a.end.y - headLength * sin(angle + 0.45)
+                ))
+                context.stroke(head, with: .color(color), style: StrokeStyle(lineWidth: stroke, lineCap: .round, lineJoin: .round))
+            }
 
         case .rectangle:
             let inset = stroke / 2
@@ -120,7 +155,7 @@ enum AnnotationRenderer {
             if a.kind == .highlighter {
                 // 荧光笔：整条路径一次 stroke，半透明在单次合成里不会因线段交叠而叠深
                 context.stroke(
-                    path, with: .color(color.opacity(0.35)),
+                    path, with: .color(color.opacity(a.opacity > 0 ? a.opacity : 0.35)),
                     style: StrokeStyle(lineWidth: stroke * 4, lineCap: .round, lineJoin: .round)
                 )
             } else {
@@ -131,10 +166,22 @@ enum AnnotationRenderer {
             }
 
         case .mosaic:
-            if let mosaic = a.mosaicImage {
-                context.draw(Image(nsImage: mosaic), in: a.rect)
-            } else {
-                context.fill(Path(a.rect), with: .color(.gray.opacity(0.35)))
+            context.drawLayer { layer in
+                switch a.mosaicStyle {
+                case 1:
+                    layer.clip(to: Path(ellipseIn: a.rect))
+                case 2:
+                    let radius = min(a.rect.width, a.rect.height) * 0.2
+                    layer.clip(to: Path(roundedRect: a.rect, cornerRadius: radius))
+                default:
+                    break
+                }
+                if let mosaic = a.mosaicImage {
+                    layer.opacity = a.opacity > 0 ? a.opacity : 1
+                    layer.draw(Image(nsImage: mosaic), in: a.rect)
+                } else {
+                    layer.fill(Path(a.rect), with: .color(.gray.opacity(0.35)))
+                }
             }
 
         case .stepBadge:
@@ -150,7 +197,9 @@ enum AnnotationRenderer {
             context.draw(number, at: a.start, anchor: .center)
 
         case .text:
-            let fontSize = AnnotationStyle.fontSize(imageWidth: imageWidth) * AnnotationStyle.textScales[a.weightIndex]
+            let fontSize = a.fontSize > 0
+                ? a.fontSize
+                : AnnotationStyle.fontSize(imageWidth: imageWidth) * AnnotationStyle.textScales[a.weightIndex]
             let font = Font.system(size: fontSize, weight: .semibold)
             // GraphicsContext.resolve 只接受裸 Text，阴影用底下一层偏移的深色拷贝来模拟
             let shadow = context.resolve(
