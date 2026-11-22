@@ -1201,7 +1201,10 @@ final class ScreenshotSelectionSurfaceView: NSView {
         Task { [weak self] in
             guard let self else { return }
             do {
-                let result = try await ImageOCRService.shared.recognizeText(from: png, markdown: false)
+                // 与剪贴板 OCR 走同一条链路：读同一个 markdown 开关（默认开）。
+                // macOS 26+ 走版面感知引擎（识别更完整），低版本自动回退纯文本。
+                let useMarkdown = UserDefaults.standard.object(forKey: "ocrToMarkdown") as? Bool ?? true
+                let result = try await ImageOCRService.shared.recognizeText(from: png, markdown: useMarkdown)
                 let text = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !text.isEmpty else {
                     self.showChip(L10n.tr("editor.ocr.empty"))
@@ -2613,8 +2616,9 @@ final class OCRResultPanel: NSView {
         closeButton.translatesAutoresizingMaskIntoConstraints = false
         addSubview(closeButton)
 
-        // 直接用 NSTextField 贴四边布局，不再套 NSScrollView：
-        // scroll 的 documentView 若不用 frame/autoresize 而用约束，文本会整块不渲染（空白卡片）。
+        // 正文放进滚动区：文本较长时不能溢出卡片，也不能只显示一半。
+        // documentView 用 frame 布局（不用 Auto Layout），这是 NSScrollView 最稳的用法。
+        let contentWidth: CGFloat = 372
         let body = NSTextField(wrappingLabelWithString: text)
         body.isSelectable = true
         body.isEditable = false
@@ -2624,8 +2628,19 @@ final class OCRResultPanel: NSView {
         body.textColor = .labelColor
         body.maximumNumberOfLines = 0
         body.lineBreakMode = .byWordWrapping
-        body.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(body)
+        body.preferredMaxLayoutWidth = contentWidth
+        let needed = body.sizeThatFits(NSSize(width: contentWidth, height: CGFloat.greatestFiniteMagnitude)).height
+        body.frame = NSRect(x: 0, y: 0, width: contentWidth, height: max(ceil(needed) + 4, 24))
+        body.autoresizingMask = [.width]
+
+        let scroll = NSScrollView(frame: .zero)
+        scroll.documentView = body
+        scroll.hasVerticalScroller = true
+        scroll.drawsBackground = false
+        scroll.borderType = .noBorder
+        scroll.autohidesScrollers = true
+        scroll.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(scroll)
 
         let copyButton = NSButton(title: L10n.tr("action.copy"), target: self, action: #selector(copyClicked))
         copyButton.isBordered = false
@@ -2644,10 +2659,10 @@ final class OCRResultPanel: NSView {
             closeButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -18),
             closeButton.widthAnchor.constraint(equalToConstant: 22),
             closeButton.heightAnchor.constraint(equalToConstant: 22),
-            body.topAnchor.constraint(equalTo: title.bottomAnchor, constant: 14),
-            body.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 24),
-            body.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -24),
-            body.bottomAnchor.constraint(lessThanOrEqualTo: copyButton.topAnchor, constant: -14),
+            scroll.topAnchor.constraint(equalTo: title.bottomAnchor, constant: 14),
+            scroll.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 24),
+            scroll.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -24),
+            scroll.bottomAnchor.constraint(equalTo: copyButton.topAnchor, constant: -14),
             copyButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -24),
             copyButton.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -20),
             copyButton.widthAnchor.constraint(equalToConstant: 84),
