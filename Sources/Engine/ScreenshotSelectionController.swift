@@ -1543,8 +1543,11 @@ final class ScreenshotSelectionSurfaceView: NSView {
         }
 
         if let cand = candidate, sel == nil {
-            // 窗口识别高亮
-            ctx.setStrokeColor(NSColor.white.withAlphaComponent(0.9).cgColor)
+            // 窗口识别高亮：深底 + 白线，浅色/深色画面上都看得见
+            ctx.setStrokeColor(NSColor.black.withAlphaComponent(0.4).cgColor)
+            ctx.setLineWidth(2.5)
+            ctx.stroke(cand.insetBy(dx: 0.75, dy: 0.75))
+            ctx.setStrokeColor(NSColor.white.withAlphaComponent(0.95).cgColor)
             ctx.setLineWidth(1.5)
             ctx.stroke(cand.insetBy(dx: 0.75, dy: 0.75))
             drawSizeBadge(for: cand, at: badgeAnchor(for: cand), ctx: ctx)
@@ -1559,7 +1562,11 @@ final class ScreenshotSelectionSurfaceView: NSView {
         }
 
         if let sel {
-            // 选区描边 + 8 手柄；拖拽中显示像素徽章，松手后换成工具条
+            // 选区描边 + 8 手柄；拖拽中显示像素徽章，松手后换成工具条。
+            // 先画深色描边再叠白线：浅色截图（浅色模式下很常见）也能看清边界。
+            ctx.setStrokeColor(NSColor.black.withAlphaComponent(0.35).cgColor)
+            ctx.setLineWidth(2.5)
+            ctx.stroke(sel.insetBy(dx: 0.75, dy: 0.75))
             ctx.setStrokeColor(NSColor.white.cgColor)
             ctx.setLineWidth(1.5)
             ctx.stroke(sel.insetBy(dx: 0.75, dy: 0.75))
@@ -1578,7 +1585,7 @@ final class ScreenshotSelectionSurfaceView: NSView {
                 let rect = NSRect(origin: CGPoint(x: point.x - handleSize / 2, y: point.y - handleSize / 2), size: CGSize(width: handleSize, height: handleSize))
                 ctx.setFillColor(NSColor.white.cgColor)
                 ctx.fill(rect)
-                ctx.setStrokeColor(NSColor(white: 0.4, alpha: 1).cgColor)
+                ctx.setStrokeColor(NSColor.black.withAlphaComponent(0.55).cgColor)
                 ctx.setLineWidth(1)
                 ctx.stroke(rect)
             }
@@ -1932,11 +1939,13 @@ final class SelectionToolbar: NSVisualEffectView {
     private var startLongButton: ToolbarButton!
     private let chromeTintView = NSView()
 
-    /// 磨砂条叠加色：随系统深浅色自适应
+    /// 磨砂条叠加色：随系统深浅色自适应。
+    /// 浅色用接近实白的底，保证叠在压暗的截图上时仍是一条干净的浅色工具条，
+    /// 而不是被背景染成灰黑色。
     static let chromeTint: NSColor = NSColor(name: nil) { appearance in
         appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-            ? NSColor(white: 0.16, alpha: 0.80)
-            : NSColor(white: 1.0, alpha: 0.72)
+            ? NSColor(white: 0.18, alpha: 0.92)
+            : NSColor(white: 0.97, alpha: 0.96)
     }
 
     init(target: AnyObject, action: Selector) {
@@ -1947,6 +1956,8 @@ final class SelectionToolbar: NSVisualEffectView {
         wantsLayer = true
         layer?.cornerRadius = 14
         layer?.masksToBounds = true
+        layer?.borderWidth = 1
+        layer?.borderColor = NSColor.separatorColor.cgColor
 
         // 磨砂条跟随系统外观：浅色叠白、深色叠深灰，避免深色模式下过亮
         let tint = chromeTintView
@@ -2027,6 +2038,7 @@ final class SelectionToolbar: NSVisualEffectView {
         // 系统切换深浅色时，layer 里的 CGColor 不会自动更新，这里重新解析
         effectiveAppearance.performAsCurrentDrawingAppearance {
             chromeTintView.layer?.backgroundColor = Self.chromeTint.cgColor
+            layer?.borderColor = NSColor.separatorColor.cgColor
         }
     }
 
@@ -2131,6 +2143,8 @@ final class SelectionOptionsBar: NSVisualEffectView {
         wantsLayer = true
         layer?.cornerRadius = 12
         layer?.masksToBounds = true
+        layer?.borderWidth = 1
+        layer?.borderColor = NSColor.separatorColor.cgColor
 
         let tint = chromeTintView
         tint.wantsLayer = true
@@ -2164,6 +2178,7 @@ final class SelectionOptionsBar: NSVisualEffectView {
         super.viewDidChangeEffectiveAppearance()
         effectiveAppearance.performAsCurrentDrawingAppearance {
             chromeTintView.layer?.backgroundColor = SelectionToolbar.chromeTint.cgColor
+            layer?.borderColor = NSColor.separatorColor.cgColor
         }
     }
 
