@@ -1867,21 +1867,28 @@ final class SelectionToolbar: NSVisualEffectView {
     private var modeScreenshotButton: ToolbarButton!
     private var modeLongButton: ToolbarButton!
     private var startLongButton: ToolbarButton!
+    private let chromeTintView = NSView()
+
+    /// 磨砂条叠加色：随系统深浅色自适应
+    static let chromeTint: NSColor = NSColor(name: nil) { appearance in
+        appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+            ? NSColor(white: 0.16, alpha: 0.80)
+            : NSColor(white: 1.0, alpha: 0.72)
+    }
 
     init(target: AnyObject, action: Selector) {
         super.init(frame: .zero)
         material = .popover
         blendingMode = .withinWindow
         state = .active
-        appearance = NSAppearance(named: .aqua)
         wantsLayer = true
         layer?.cornerRadius = 14
         layer?.masksToBounds = true
 
-        // 参考图是接近实白的磨砂条，纯 .popover 在深色底上会发灰，叠一层白。
-        let tint = NSView()
+        // 磨砂条跟随系统外观：浅色叠白、深色叠深灰，避免深色模式下过亮
+        let tint = chromeTintView
         tint.wantsLayer = true
-        tint.layer?.backgroundColor = NSColor(white: 1, alpha: 0.72).cgColor
+        tint.layer?.backgroundColor = Self.chromeTint.cgColor
         tint.translatesAutoresizingMaskIntoConstraints = false
         addSubview(tint)
         NSLayoutConstraint.activate([
@@ -1951,11 +1958,19 @@ final class SelectionToolbar: NSVisualEffectView {
 
     required init?(coder: NSCoder) { fatalError("not used") }
 
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        // 系统切换深浅色时，layer 里的 CGColor 不会自动更新，这里重新解析
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            chromeTintView.layer?.backgroundColor = Self.chromeTint.cgColor
+        }
+    }
+
     private static func divider() -> NSView {
         let line = NSView()
         line.translatesAutoresizingMaskIntoConstraints = false
         line.wantsLayer = true
-        line.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.16).cgColor
+        line.layer?.backgroundColor = NSColor.separatorColor.cgColor
         line.widthAnchor.constraint(equalToConstant: 1).isActive = true
         line.heightAnchor.constraint(equalToConstant: 18).isActive = true
         return line
@@ -2039,6 +2054,7 @@ final class SelectionOptionsBar: NSVisualEffectView {
     private var boldButtons: [Int: ToolbarButton] = [:]
     private var alignButtons: [Int: ToolbarButton] = [:]
     private var previewDot: NSView?
+    private let chromeTintView = NSView()
 
     init(target: AnyObject, action: Selector) {
         self.target = target
@@ -2047,14 +2063,13 @@ final class SelectionOptionsBar: NSVisualEffectView {
         material = .popover
         blendingMode = .withinWindow
         state = .active
-        appearance = NSAppearance(named: .aqua)
         wantsLayer = true
         layer?.cornerRadius = 12
         layer?.masksToBounds = true
 
-        let tint = NSView()
+        let tint = chromeTintView
         tint.wantsLayer = true
-        tint.layer?.backgroundColor = NSColor(white: 1, alpha: 0.72).cgColor
+        tint.layer?.backgroundColor = SelectionToolbar.chromeTint.cgColor
         tint.translatesAutoresizingMaskIntoConstraints = false
         addSubview(tint)
         NSLayoutConstraint.activate([
@@ -2079,6 +2094,13 @@ final class SelectionOptionsBar: NSVisualEffectView {
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            chromeTintView.layer?.backgroundColor = SelectionToolbar.chromeTint.cgColor
+        }
+    }
 
     func configure(
         tool: ScreenshotAnnotation.Kind?,
@@ -2293,7 +2315,7 @@ final class SelectionOptionsBar: NSVisualEffectView {
     private func addTextSizeControl(fontSize: CGFloat) {
         let chip = NSView()
         chip.wantsLayer = true
-        chip.layer?.backgroundColor = NSColor(white: 1, alpha: 0.9).cgColor
+        chip.layer?.backgroundColor = NSColor.controlBackgroundColor.cgColor
         chip.layer?.cornerRadius = 7
         chip.layer?.borderWidth = 1
         chip.layer?.borderColor = NSColor.black.withAlphaComponent(0.1).cgColor
@@ -2346,7 +2368,7 @@ final class SelectionOptionsBar: NSVisualEffectView {
         let line = NSView()
         line.translatesAutoresizingMaskIntoConstraints = false
         line.wantsLayer = true
-        line.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.16).cgColor
+        line.layer?.backgroundColor = NSColor.separatorColor.cgColor
         line.widthAnchor.constraint(equalToConstant: 1).isActive = true
         line.heightAnchor.constraint(equalToConstant: 18).isActive = true
         stack.addArrangedSubview(line)
@@ -2407,9 +2429,9 @@ final class PopupSizeButton: NSButton {    var titleText = "16" {
     override func draw(_ dirtyRect: NSRect) {
         let rect = bounds.insetBy(dx: 0.5, dy: 0.5)
         let path = NSBezierPath(roundedRect: rect, xRadius: 6, yRadius: 6)
-        NSColor(white: 1, alpha: 0.9).setFill()
+        NSColor.controlBackgroundColor.setFill()
         path.fill()
-        NSColor.black.withAlphaComponent(0.14).setStroke()
+        NSColor.separatorColor.setStroke()
         path.lineWidth = 1
         path.stroke()
 
@@ -2522,9 +2544,9 @@ final class PopupShapeButton: NSButton {
     override func draw(_ dirtyRect: NSRect) {
         let rect = bounds.insetBy(dx: 0.5, dy: 0.5)
         let path = NSBezierPath(roundedRect: rect, xRadius: 6, yRadius: 6)
-        NSColor(white: 1, alpha: 0.9).setFill()
+        NSColor.controlBackgroundColor.setFill()
         path.fill()
-        NSColor.black.withAlphaComponent(0.14).setStroke()
+        NSColor.separatorColor.setStroke()
         path.lineWidth = 1
         path.stroke()
 
@@ -2567,17 +2589,15 @@ final class OCRResultPanel: NSView {
         self.text = text
         self.onClose = onClose
         super.init(frame: .zero)
-        // 卡片是固定白底；系统深色模式下 labelColor 会解析成白色 → 白字白底全白。
-        // 强制浅色外观，让语义色都按黑字解析。
-        appearance = NSAppearance(named: .aqua)
+        // 跟随系统深浅色：不再强制浅色，背景与文字都用语义色，深浅色下都清晰
         wantsLayer = true
-        layer?.backgroundColor = NSColor.white.cgColor
         layer?.cornerRadius = 14
         layer?.masksToBounds = false
         layer?.shadowColor = NSColor.black.cgColor
         layer?.shadowOpacity = 0.18
         layer?.shadowRadius = 12
         layer?.shadowOffset = NSSize(width: 0, height: -4)
+        updateChromeColors()
 
         let title = NSTextField(labelWithString: L10n.tr("editor.ocr.result.title"))
         title.font = .systemFont(ofSize: 15, weight: .semibold)
@@ -2636,6 +2656,18 @@ final class OCRResultPanel: NSView {
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        updateChromeColors()
+    }
+
+    /// layer 背景是 CGColor，不会随外观自动更新，需在初始化与外观变化时重新解析
+    private func updateChromeColors() {
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
+        }
+    }
 
     @objc private func closeClicked() {
         onClose()
@@ -2767,10 +2799,10 @@ final class ToolbarButton: NSButton {
     override func draw(_ dirtyRect: NSRect) {
         let highlight = bounds.insetBy(dx: 1, dy: 1)
         if selectedState {
-            NSColor.black.withAlphaComponent(0.07).setFill()
+            NSColor.labelColor.withAlphaComponent(0.10).setFill()
             NSBezierPath(roundedRect: highlight, xRadius: 7, yRadius: 7).fill()
         } else if hovering, isEnabled {
-            NSColor.black.withAlphaComponent(0.045).setFill()
+            NSColor.labelColor.withAlphaComponent(0.06).setFill()
             NSBezierPath(roundedRect: highlight, xRadius: 7, yRadius: 7).fill()
         }
 
@@ -2871,7 +2903,7 @@ final class ToolbarButton: NSButton {
             }
         }
         NSGraphicsContext.restoreGraphicsState()
-        NSColor.black.withAlphaComponent(0.14).setStroke()
+        NSColor.separatorColor.setStroke()
         clip.lineWidth = 1
         clip.stroke()
         if selectedState {
@@ -2890,9 +2922,9 @@ final class ToolbarButton: NSButton {
     private func drawChip(_ title: String, tint: NSColor) {
         let rect = bounds.insetBy(dx: 1, dy: 3)
         let path = NSBezierPath(roundedRect: rect, xRadius: 6, yRadius: 6)
-        NSColor(white: 1, alpha: 0.9).setFill()
+        NSColor.controlBackgroundColor.setFill()
         path.fill()
-        (selectedState ? NSColor.controlAccentColor : NSColor.black.withAlphaComponent(0.14)).setStroke()
+        (selectedState ? NSColor.controlAccentColor : NSColor.separatorColor).setStroke()
         path.lineWidth = selectedState ? 1.5 : 1
         path.stroke()
         let attrs: [NSAttributedString.Key: Any] = [
