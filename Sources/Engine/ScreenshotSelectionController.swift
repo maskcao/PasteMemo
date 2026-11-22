@@ -2822,7 +2822,8 @@ final class ToolbarButton: NSButton {
         let originX = chevron ? bounds.midX - side / 2 - 2.5 : bounds.midX - side / 2
         let rect = NSRect(x: originX, y: bounds.midY - side / 2, width: side, height: side)
         NSGraphicsContext.saveGraphicsState()
-        image.draw(in: rect, from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: false, hints: nil)
+        // 视图是 flipped（y 向下），respectFlipped: true 让 NSImage 自动翻正，否则图标上下颠倒
+        image.draw(in: rect, from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
         tint.set()
         rect.fill(using: .sourceAtop)
         NSGraphicsContext.restoreGraphicsState()
