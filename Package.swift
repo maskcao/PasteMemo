@@ -9,7 +9,7 @@ let package = Package(
     dependencies: [
         .package(
             url: "https://github.com/lifedever/PermissionFlow.git",
-            from: "0.1.0"
+            from: "0.1.2"
         ),
     ],
     targets: [
