@@ -1769,7 +1769,7 @@ final class ScreenshotSelectionSurfaceView: NSView {
                 .foregroundColor: color.withAlphaComponent(alpha),
                 .paragraphStyle: paragraph,
             ]
-            (a.text as NSString).draw(with: CGRect(origin: a.start, size: CGSize(width: bounds.width - a.start.x, height: 200)), options: [.usesLineFragmentOrigin], withAttributes: attrs)
+            (a.text as NSString).draw(with: CGRect(origin: a.start, size: CGSize(width: bounds.width - a.start.x, height: 200)), options: [.usesLineFragmentOrigin], attributes: attrs)
         }
     }
 
@@ -2191,10 +2191,11 @@ final class SelectionOptionsBar: NSVisualEffectView {
             addOpacityControl(value: opacity)
         case .text:
             // 对齐浮引文字面板：加粗 + 对齐 | 字号 | 色板
+            let surface = target as? ScreenshotSelectionSurfaceView
             let boldButton = ToolbarButton(look: .symbol("bold"), tooltip: L10n.tr("editor.text.bold"), target: target, action: action)
             boldButton.tag = 430
             boldButton.size = NSSize(width: 28, height: 28)
-            boldButton.selectedState = textBold
+            boldButton.selectedState = surface?.textBold == true
             boldButtons[0] = boldButton
             stack.addArrangedSubview(boldButton)
             let alignSymbols = ["text.alignleft", "text.aligncenter", "text.alignright"]
@@ -2203,7 +2204,7 @@ final class SelectionOptionsBar: NSVisualEffectView {
                 let button = ToolbarButton(look: .symbol(alignSymbols[index]), tooltip: L10n.tr(alignTooltips[index]), target: target, action: action)
                 button.tag = 431 + index
                 button.size = NSSize(width: 28, height: 28)
-                button.selectedState = textAlign == index
+                button.selectedState = surface?.textAlign == index
                 alignButtons[index] = button
                 stack.addArrangedSubview(button)
             }

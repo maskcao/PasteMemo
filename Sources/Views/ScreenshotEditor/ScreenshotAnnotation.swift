@@ -229,21 +229,20 @@ enum AnnotationRenderer {
                 ? a.fontSize
                 : AnnotationStyle.fontSize(imageWidth: imageWidth) * AnnotationStyle.textScales[a.weightIndex]
             let font = Font.system(size: fontSize, weight: a.isBold ? .bold : .semibold)
-            let alignment: TextAlignment = [.leading, .center, .trailing][min(max(a.alignIndex, 0), 2)]
-            // GraphicsContext.resolve 只接受裸 Text，阴影用底下一层偏移的深色拷贝来模拟
+            // GraphicsContext.resolve 只接受裸 Text；行内对齐由扁平化导出的 paragraphStyle 兜底
             let shadow = context.resolve(
-                Text(a.text).font(font).multilineTextAlignment(alignment).foregroundColor(.black.opacity(0.35))
+                Text(a.text).font(font).foregroundColor(.black.opacity(0.35))
             )
             context.draw(shadow, at: CGPoint(x: a.start.x + stroke * 0.5, y: a.start.y + stroke * 0.5), anchor: .topLeading)
             let line = context.resolve(
-                Text(a.text).font(font).multilineTextAlignment(alignment).foregroundColor(color)
+                Text(a.text).font(font).foregroundColor(color)
             )
             context.draw(line, at: a.start, anchor: .topLeading)
         }
     }
 
     /// 正多边形路径（三角形/五边形/六边形），顶边起、顺时针（对齐浮引形状观感）
-    static func regularPolygonPath(kind: Kind, in rect: CGRect) -> Path {
+    static func regularPolygonPath(kind: ScreenshotAnnotation.Kind, in rect: CGRect) -> Path {
         let sides: CGFloat
         switch kind {
         case .triangle: sides = 3
@@ -291,7 +290,7 @@ enum AnnotationRenderer {
     }
 
     /// 对话气泡（圆角矩形 + 左下尾巴）与标注气泡（椭圆 + 右下尾巴）
-    static func bubblePath(kind: Kind, in rect: CGRect, stroke: CGFloat) -> Path {
+    static func bubblePath(kind: ScreenshotAnnotation.Kind, in rect: CGRect, stroke: CGFloat) -> Path {
         let tail: CGFloat = min(rect.width, rect.height) * 0.25
         let bubble: CGRect
         var path = Path()
