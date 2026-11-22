@@ -843,9 +843,9 @@ final class ScreenshotSelectionSurfaceView: NSView {
         case 9: if captureMode == .screenshot { extractText() }
         case 13: if captureMode == .screenshot { recognizeQRCode() }
         case 10: if captureMode == .screenshot { pinSelection() }
-        case 511...514:
+        case 511...513:
             widthPreset = control.tag - 511
-            strokeScale = [0.9, 1.8, 2.8, 1.8][widthPreset]
+            strokeScale = [0.9, 1.8, 2.8][widthPreset]
         case 101...107:
             colorIndex = control.tag - 101
             needsDisplay = true
@@ -2256,11 +2256,11 @@ final class SelectionOptionsBar: NSVisualEffectView {
     }
 
     private func addWidthControl(preset: Int) {
+        // 对齐浮引：粗细只有 小/中/大 三档（"跟随主题"是钉图属性，不进截图面板）
         let titles = [
             L10n.tr("editor.size.small"),
             L10n.tr("editor.size.medium"),
             L10n.tr("editor.size.large"),
-            L10n.tr("editor.size.theme"),
         ]
         for (index, title) in titles.enumerated() {
             let textWidth = (title as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: 11.5, weight: .medium)]).width
@@ -2583,7 +2583,12 @@ final class ToolbarButton: NSButton {
         didSet { needsDisplay = true }
     }
     var size: NSSize = NSSize(width: 30, height: 30) {
-        didSet { invalidateIntrinsicContentSize() }
+        didSet {
+            invalidateIntrinsicContentSize()
+            // init 时建的固定约束必须同步更新，否则 chip 按钮仍是 30pt 宽、长文字画出边界
+            widthConstraint?.constant = size.width
+            heightConstraint?.constant = size.height
+        }
     }
     var selectedState = false {
         didSet { needsDisplay = true }
@@ -2591,6 +2596,8 @@ final class ToolbarButton: NSButton {
     private var hovering = false
     private var hoverTrackingArea: NSTrackingArea?
     private var hoverTipWork: DispatchWorkItem?
+    private var widthConstraint: NSLayoutConstraint?
+    private var heightConstraint: NSLayoutConstraint?
 
     init(look: Look, tooltip: String, target: AnyObject?, action: Selector) {
         self.look = look
@@ -2602,11 +2609,15 @@ final class ToolbarButton: NSButton {
         self.title = ""
         self.setButtonType(.momentaryChange)
         self.refusesFirstResponder = true
+        // 面板空间不足时 NSStackView 会挤压按钮导致文字溢出（如"跟随主题"），禁止压缩
+        self.setContentCompressionResistancePriority(.required, for: .horizontal)
+        self.setContentHuggingPriority(.required, for: .horizontal)
         self.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([
-            widthAnchor.constraint(equalToConstant: size.width),
-            heightAnchor.constraint(equalToConstant: size.height),
-        ])
+        let wc = widthAnchor.constraint(equalToConstant: size.width)
+        let hc = heightAnchor.constraint(equalToConstant: size.height)
+        widthConstraint = wc
+        heightConstraint = hc
+        NSLayoutConstraint.activate([wc, hc])
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
