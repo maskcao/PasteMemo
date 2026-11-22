@@ -358,8 +358,10 @@ final class ScreenshotSelectionSurfaceView: NSView {
         }
         var result: [(CGRect, CGFloat)] = []
         for info in list {
+            // 只取普通层级的窗口。截图浮层自己是 screenSaver 级（layer 1000）、
+            // 钉图/HUD 是浮动级，都会被 layer == 0 过滤掉；
+            // 不再排除本进程的窗口——这样也能框住 PasteMemo 自己的主界面做截图提示。
             guard (info[kCGWindowLayer as String] as? Int) == 0,
-                  (info[kCGWindowOwnerPID as String] as? Int) != Int(getpid()),
                   let dict = info[kCGWindowBounds as String] as? [String: Any]
             else { continue }
             var bounds = CGRect.zero
