@@ -2567,6 +2567,9 @@ final class OCRResultPanel: NSView {
         self.text = text
         self.onClose = onClose
         super.init(frame: .zero)
+        // 卡片是固定白底；系统深色模式下 labelColor 会解析成白色 → 白字白底全白。
+        // 强制浅色外观，让语义色都按黑字解析。
+        appearance = NSAppearance(named: .aqua)
         wantsLayer = true
         layer?.backgroundColor = NSColor.white.cgColor
         layer?.cornerRadius = 14
@@ -2590,8 +2593,8 @@ final class OCRResultPanel: NSView {
         closeButton.translatesAutoresizingMaskIntoConstraints = false
         addSubview(closeButton)
 
-        // 用多行可选中 NSTextField 而不是 NSTextView：后者在 NSScrollView 里若尺寸/容器没配好
-        // 会完全不显示文字（表现为空白卡片），TextField 的排版是自适应的，稳定得多。
+        // 直接用 NSTextField 贴四边布局，不再套 NSScrollView：
+        // scroll 的 documentView 若不用 frame/autoresize 而用约束，文本会整块不渲染（空白卡片）。
         let body = NSTextField(wrappingLabelWithString: text)
         body.isSelectable = true
         body.isEditable = false
@@ -2601,21 +2604,8 @@ final class OCRResultPanel: NSView {
         body.textColor = .labelColor
         body.maximumNumberOfLines = 0
         body.lineBreakMode = .byWordWrapping
-        body.preferredMaxLayoutWidth = 372
         body.translatesAutoresizingMaskIntoConstraints = false
-
-        let scroll = NSScrollView(frame: .zero)
-        scroll.hasVerticalScroller = true
-        scroll.drawsBackground = false
-        scroll.borderType = .noBorder
-        scroll.autohidesScrollers = true
-        scroll.translatesAutoresizingMaskIntoConstraints = false
-        let clip = scroll.contentView
-        clip.documentView = body
-        addSubview(scroll)
-        // documentView 宽度锁定为滚动区宽度，高度由文本自然撑开
-        body.widthAnchor.constraint(equalTo: clip.widthAnchor).isActive = true
-        body.topAnchor.constraint(equalTo: clip.topAnchor).isActive = true
+        addSubview(body)
 
         let copyButton = NSButton(title: L10n.tr("action.copy"), target: self, action: #selector(copyClicked))
         copyButton.isBordered = false
@@ -2634,10 +2624,10 @@ final class OCRResultPanel: NSView {
             closeButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -18),
             closeButton.widthAnchor.constraint(equalToConstant: 22),
             closeButton.heightAnchor.constraint(equalToConstant: 22),
-            scroll.topAnchor.constraint(equalTo: title.bottomAnchor, constant: 14),
-            scroll.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 24),
-            scroll.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -24),
-            scroll.bottomAnchor.constraint(equalTo: copyButton.topAnchor, constant: -14),
+            body.topAnchor.constraint(equalTo: title.bottomAnchor, constant: 14),
+            body.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 24),
+            body.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -24),
+            body.bottomAnchor.constraint(lessThanOrEqualTo: copyButton.topAnchor, constant: -14),
             copyButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -24),
             copyButton.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -20),
             copyButton.widthAnchor.constraint(equalToConstant: 84),
