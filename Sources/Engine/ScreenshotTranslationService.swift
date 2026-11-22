@@ -181,14 +181,16 @@ private struct TranslationRunnerView: View {
     let completion: @MainActor @Sendable (TranslationOutcome) -> Void
 
     var body: some View {
-        Color.clear
+        // 在 MainActor 上先算好：@Sendable 闭包里不能再读 configuration 的隔离属性
+        let hasExplicitSource = configuration.source != nil
+        return Color.clear
             .frame(width: 1, height: 1)
             .translationTask(configuration) { @Sendable session in
                 NSLog("Screenshot translation session started")
                 do {
                     // 源语言为空时 prepareTranslation() 会报 unableToIdentifyLanguage；
                     // 这种情况直接交给 translate() 自动识别（它会自己准备语言包）。
-                    if configuration.source != nil {
+                    if hasExplicitSource {
                         try await session.prepareTranslation()
                     }
                     let response = try await session.translate(text)
