@@ -2591,8 +2591,6 @@ final class OCRResultPanel: NSView {
 
     private let text: String
     private let onClose: () -> Void
-    // var：赋值发生在 super.init 之后（本地 6.4.2 工具链对 let 放行，CI 的 Xcode 不允许）
-    private var textView: NSTextView
 
     init(text: String, onClose: @escaping () -> Void) {
         self.text = text
@@ -2621,7 +2619,7 @@ final class OCRResultPanel: NSView {
         closeButton.translatesAutoresizingMaskIntoConstraints = false
         addSubview(closeButton)
 
-        textView = NSTextView(frame: .zero)
+        let textView = NSTextView(frame: .zero)
         textView.isSelectable = true
         textView.isEditable = false
         textView.drawsBackground = false
