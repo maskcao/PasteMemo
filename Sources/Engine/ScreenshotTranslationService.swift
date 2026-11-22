@@ -134,13 +134,13 @@ private struct TranslationRunnerView: View {
     var body: some View {
         Color.clear
             .frame(width: 1, height: 1)
-            .translationTask(configuration) { session in
+            .translationTask(configuration) { @Sendable session in
                 do {
                     try await session.prepareTranslation()
                     let response = try await session.translate(text)
-                    completion(.success(response.targetText))
+                    await completion(.success(response.targetText))
                 } catch {
-                    completion(.failure(error.localizedDescription))
+                    await completion(.failure(error.localizedDescription))
                 }
             }
     }
