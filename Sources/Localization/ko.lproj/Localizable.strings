@@ -1300,3 +1300,4 @@
 "editor.align.left" = "왼쪽 정렬";
 "editor.align.center" = "가운데 정렬";
 "editor.align.right" = "오른쪽 정렬";
+"editor.ocr.result.title" = "인식 결과";

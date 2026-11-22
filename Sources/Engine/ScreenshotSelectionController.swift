@@ -220,6 +220,8 @@ final class ScreenshotSelectionSurfaceView: NSView {
     /// 文字标注加粗与对齐（0 左 / 1 中 / 2 右），浮引样式面板
     var textBold = false
     var textAlign = 0
+    /// 识别结果小窗（浮引「识别结果」面板）
+    var ocrPanel: OCRResultPanel?
     private var weightIndex = 1
     /// 二级面板的可调参数：线宽倍率 / 荧光笔透明度 / 马赛克透明度 / 箭头样式 / 马赛克形状 / 字号
     private var strokeScale: CGFloat = 1.8
@@ -1247,11 +1249,36 @@ final class ScreenshotSelectionSurfaceView: NSView {
                 let pasteboard = NSPasteboard.general
                 pasteboard.clearContents()
                 pasteboard.setString(text, forType: .string)
+                // 识别结果小窗显示在选区右侧（对齐浮引「识别结果」面板）
+                if let sel = self.selection {
+                    self.presentOCRResult(text: text, selection: sel)
+                }
                 self.showChip(L10n.tr("editor.ocr.copied"))
             } catch {
                 self.showChip(L10n.tr("editor.ocr.failed"))
             }
         }
+    }
+
+    private func presentOCRResult(text: String, selection: CGRect) {
+        ocrPanel?.removeFromSuperview()
+        let panel = OCRResultPanel(text: text) { [weak self] in
+            self?.ocrPanel?.removeFromSuperview()
+            self?.ocrPanel = nil
+        }
+        // 位置：选区右侧 12pt；右侧放不下翻到左侧；垂直居中并夹紧屏内
+        let size = panel.idealSize
+        let bounds = self.bounds
+        var x = selection.maxX + 12
+        if x + size.width > bounds.maxX - 8 {
+            x = selection.minX - 12 - size.width
+        }
+        if x < 8 { x = max(8, bounds.midX - size.width / 2) }
+        var y = selection.midY - size.height / 2
+        y = min(max(y, 8), bounds.height - size.height - 8)
+        panel.frame = CGRect(x: x, y: y, width: size.width, height: size.height)
+        addSubview(panel)
+        ocrPanel = panel
     }
 
     private func pinSelection() {
@@ -2553,6 +2580,105 @@ final class PopupShapeButton: NSButton {
     override func mouseDown(with event: NSEvent) {
         syncMenuSelection(currentKind)
         shapeMenu.popUp(positioning: nil, at: NSPoint(x: 0, y: bounds.maxY + 4), in: self)
+    }
+}
+
+/// 提取文字结果小窗（对齐浮引「识别结果」面板）：白卡片 + 标题/关闭 + 可选正文 + 复制按钮
+final class OCRResultPanel: NSView {
+    static let cardSize = NSSize(width: 420, height: 340)
+
+    var idealSize: NSSize { Self.cardSize }
+
+    private let text: String
+    private let onClose: () -> Void
+    private let textView: NSTextView
+
+    init(text: String, onClose: @escaping () -> Void) {
+        self.text = text
+        self.onClose = onClose
+        super.init(frame: .zero)
+        wantsLayer = true
+        layer?.backgroundColor = NSColor.white.cgColor
+        layer?.cornerRadius = 14
+        layer?.masksToBounds = false
+        layer?.shadowColor = NSColor.black.cgColor
+        layer?.shadowOpacity = 0.18
+        layer?.shadowRadius = 12
+        layer?.shadowOffset = NSSize(width: 0, height: -4)
+
+        let title = NSTextField(labelWithString: L10n.tr("editor.ocr.result.title"))
+        title.font = .systemFont(ofSize: 15, weight: .semibold)
+        title.textColor = .labelColor
+        title.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(title)
+
+        let closeButton = NSButton(image: NSImage(systemSymbolName: "xmark", accessibilityDescription: nil) ?? NSImage(), target: nil, action: nil)
+        closeButton.isBordered = false
+        closeButton.contentTintColor = .secondaryLabelColor
+        closeButton.target = self
+        closeButton.action = #selector(closeClicked)
+        closeButton.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(closeButton)
+
+        textView = NSTextView(frame: .zero)
+        textView.isSelectable = true
+        textView.isEditable = false
+        textView.drawsBackground = false
+        textView.textContainerInset = .zero
+        textView.font = .systemFont(ofSize: 14)
+        textView.textColor = .labelColor
+        textView.string = text
+        let scroll = NSScrollView(frame: .zero)
+        scroll.documentView = textView
+        scroll.hasVerticalScroller = true
+        scroll.drawsBackground = false
+        scroll.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(scroll)
+
+        let copyButton = NSButton(title: L10n.tr("action.copy"), target: self, action: #selector(copyClicked))
+        copyButton.isBordered = false
+        copyButton.wantsLayer = true
+        copyButton.layer?.backgroundColor = NSColor.controlAccentColor.cgColor
+        copyButton.layer?.cornerRadius = 17
+        copyButton.contentTintColor = .white
+        copyButton.font = .systemFont(ofSize: 14, weight: .medium)
+        copyButton.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(copyButton)
+
+        NSLayoutConstraint.activate([
+            title.topAnchor.constraint(equalTo: topAnchor, constant: 20),
+            title.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 24),
+            closeButton.topAnchor.constraint(equalTo: topAnchor, constant: 18),
+            closeButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -18),
+            closeButton.widthAnchor.constraint(equalToConstant: 22),
+            closeButton.heightAnchor.constraint(equalToConstant: 22),
+            scroll.topAnchor.constraint(equalTo: title.bottomAnchor, constant: 14),
+            scroll.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 24),
+            scroll.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -24),
+            scroll.bottomAnchor.constraint(equalTo: copyButton.topAnchor, constant: -14),
+            copyButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -24),
+            copyButton.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -20),
+            copyButton.widthAnchor.constraint(equalToConstant: 84),
+            copyButton.heightAnchor.constraint(equalToConstant: 34),
+        ])
+    }
+
+    required init?(coder: NSCoder) { fatalError("not used") }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        // 命中卡片范围内才拦截鼠标，其余透给冻结帧
+        bounds.contains(point) ? self : nil
+    }
+
+    @objc private func closeClicked() {
+        onClose()
+    }
+
+    @objc private func copyClicked() {
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(text, forType: .string)
+        onClose()
     }
 }
 

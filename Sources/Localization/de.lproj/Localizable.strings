@@ -1284,3 +1284,4 @@
 "editor.align.left" = "Linksbündig";
 "editor.align.center" = "Zentriert";
 "editor.align.right" = "Rechtsbündig";
+"editor.ocr.result.title" = "Erkennungsergebnis";

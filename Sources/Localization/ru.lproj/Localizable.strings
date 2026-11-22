@@ -1272,3 +1272,4 @@
 "editor.align.left" = "По левому краю";
 "editor.align.center" = "По центру";
 "editor.align.right" = "По правому краю";
+"editor.ocr.result.title" = "Результат распознавания";

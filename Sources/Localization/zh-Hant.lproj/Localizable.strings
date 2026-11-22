@@ -1258,3 +1258,4 @@
 "editor.align.left" = "左對齊";
 "editor.align.center" = "置中對齊";
 "editor.align.right" = "右對齊";
+"editor.ocr.result.title" = "識別結果";

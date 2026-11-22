@@ -1272,3 +1272,4 @@
 "editor.align.left" = "Rata Kiri";
 "editor.align.center" = "Rata Tengah";
 "editor.align.right" = "Rata Kanan";
+"editor.ocr.result.title" = "Hasil Pengenalan";

@@ -1298,3 +1298,4 @@
 "editor.align.left" = "左揃え";
 "editor.align.center" = "中央揃え";
 "editor.align.right" = "右揃え";
+"editor.ocr.result.title" = "認識結果";

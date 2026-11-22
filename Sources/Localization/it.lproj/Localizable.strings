@@ -1262,3 +1262,4 @@
 "editor.align.left" = "Allinea a sinistra";
 "editor.align.center" = "Allinea al centro";
 "editor.align.right" = "Allinea a destra";
+"editor.ocr.result.title" = "Risultato del riconoscimento";

@@ -1248,3 +1248,4 @@
 "editor.align.left" = "左对齐";
 "editor.align.center" = "居中对齐";
 "editor.align.right" = "右对齐";
+"editor.ocr.result.title" = "识别结果";
