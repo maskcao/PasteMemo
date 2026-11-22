@@ -1266,16 +1266,19 @@ final class ScreenshotSelectionSurfaceView: NSView {
             self?.ocrPanel?.removeFromSuperview()
             self?.ocrPanel = nil
         }
-        // 位置：选区右侧 12pt；右侧放不下翻到左侧；垂直居中并夹紧屏内
+        // 位置（对齐浮引）：优先选区右侧；右侧不够放左侧；两侧都不够则贴屏幕右缘，绝不放正中遮挡
         let size = panel.idealSize
         let bounds = self.bounds
-        var x = selection.maxX + 12
-        if x + size.width > bounds.maxX - 8 {
-            x = selection.minX - 12 - size.width
+        let margin: CGFloat = 12
+        var x = selection.maxX + margin
+        if x + size.width > bounds.maxX - margin {
+            let left = selection.minX - margin - size.width
+            // 左侧放得下就放左侧，否则贴屏幕右缘（不居中遮挡选区）
+            x = left >= margin ? left : bounds.maxX - size.width - margin
         }
-        if x < 8 { x = max(8, bounds.midX - size.width / 2) }
+        x = max(margin, min(x, bounds.width - size.width - margin))
         var y = selection.midY - size.height / 2
-        y = min(max(y, 8), bounds.height - size.height - 8)
+        y = min(max(y, margin), bounds.height - size.height - margin)
         panel.frame = CGRect(x: x, y: y, width: size.width, height: size.height)
         addSubview(panel)
         ocrPanel = panel
@@ -2619,18 +2622,28 @@ final class OCRResultPanel: NSView {
         closeButton.translatesAutoresizingMaskIntoConstraints = false
         addSubview(closeButton)
 
-        let textView = NSTextView(frame: .zero)
+        // NSTextView 必须显式配置尺寸/伸缩行为，否则 frame 为 0 时文字完全不可见（表现为空白卡片）
+        let textView = NSTextView(frame: NSRect(x: 0, y: 0, width: 372, height: 220))
         textView.isSelectable = true
         textView.isEditable = false
         textView.drawsBackground = false
-        textView.textContainerInset = .zero
+        textView.textContainerInset = NSSize(width: 0, height: 2)
         textView.font = .systemFont(ofSize: 14)
         textView.textColor = .labelColor
+        textView.isVerticallyResizable = true
+        textView.isHorizontallyResizable = false
+        textView.minSize = NSSize(width: 0, height: 0)
+        textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        textView.autoresizingMask = [.width]
+        textView.textContainer?.widthTracksTextView = true
+        textView.textContainer?.containerSize = NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude)
         textView.string = text
         let scroll = NSScrollView(frame: .zero)
         scroll.documentView = textView
         scroll.hasVerticalScroller = true
         scroll.drawsBackground = false
+        scroll.borderType = .noBorder
+        scroll.autohidesScrollers = true
         scroll.translatesAutoresizingMaskIntoConstraints = false
         addSubview(scroll)
 
@@ -2663,11 +2676,6 @@ final class OCRResultPanel: NSView {
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
-
-    override func hitTest(_ point: NSPoint) -> NSView? {
-        // 命中卡片范围内才拦截鼠标，其余透给冻结帧
-        bounds.contains(point) ? self : nil
-    }
 
     @objc private func closeClicked() {
         onClose()
