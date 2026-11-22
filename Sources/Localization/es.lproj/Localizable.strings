@@ -135,6 +135,10 @@
 "editor.tool.highlighter" = "Resaltador";
 "editor.tool.pointer" = "Seleccionar";
 "editor.tool.ocr" = "Extraer texto";
+"editor.tool.translate" = "Traducir";
+"editor.translate.working" = "Traduciendo…";
+"editor.translate.failed" = "Error al traducir";
+"editor.translate.result.title" = "Resultado de traducción";
 "editor.tool.pin" = "Fijar en pantalla";
 "editor.copy" = "Copiar";
 "editor.highlight.placeholder" = "Máx. 16 caracteres";

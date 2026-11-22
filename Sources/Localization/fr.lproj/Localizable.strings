@@ -135,6 +135,10 @@
 "editor.tool.highlighter" = "Surligneur";
 "editor.tool.pointer" = "Sélectionner";
 "editor.tool.ocr" = "Extraire le texte";
+"editor.tool.translate" = "Traduire";
+"editor.translate.working" = "Traduction en cours…";
+"editor.translate.failed" = "Échec de la traduction";
+"editor.translate.result.title" = "Résultat de la traduction";
 "editor.tool.pin" = "Épingler à l'écran";
 "editor.copy" = "Copier";
 "editor.highlight.placeholder" = "16 caractères max";

@@ -307,6 +307,10 @@
 "editor.tool.highlighter" = "荧光笔";
 "editor.tool.pointer" = "选择";
 "editor.tool.ocr" = "提取文字";
+"editor.tool.translate" = "翻译";
+"editor.translate.working" = "翻译中…";
+"editor.translate.failed" = "翻译失败";
+"editor.translate.result.title" = "翻译结果";
 "editor.tool.pin" = "钉在屏幕";
 "editor.copy" = "复制";
 "editor.highlight.placeholder" = "最多输入 16 个字符";

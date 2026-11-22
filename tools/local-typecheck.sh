@@ -15,6 +15,7 @@ FILES=(
   Sources/Engine/ToastCenter.swift
   Sources/Views/Components/UnifiedToastView.swift
   Sources/Engine/ImageOCRService.swift
+  Sources/Engine/ScreenshotTranslationService.swift
   Sources/Engine/LongScreenshotStitcher.swift
   Sources/Engine/ScreenshotCapture.swift
   Sources/App/Localization.swift

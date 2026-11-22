@@ -824,6 +824,7 @@ final class ScreenshotSelectionSurfaceView: NSView {
         case 7: if captureMode == .screenshot { toggleTool(.stepBadge) }
         case 8: if captureMode == .screenshot { toggleTool(.highlighter) }
         case 9: if captureMode == .screenshot { extractText() }
+        case 14: if captureMode == .screenshot { translateSelection() }
         case 13: if captureMode == .screenshot { recognizeQRCode() }
         case 10: if captureMode == .screenshot { pinSelection() }
         case 511...513:
@@ -1224,12 +1225,56 @@ final class ScreenshotSelectionSurfaceView: NSView {
         }
     }
 
+    /// 翻译选区文字（对齐浮引：截图取词翻译使用系统翻译）。
+    /// 先走与「提取文字」相同的 OCR，再把整段文字交给系统 Translation 框架。
+    private func translateSelection() {
+        guard let png = croppedBasePNG() else { return }
+        if #available(macOS 15.0, *) {
+            showChip(L10n.tr("editor.translate.working"), duration: 60)
+            Task { [weak self] in
+                guard let self else { return }
+                do {
+                    let useMarkdown = UserDefaults.standard.object(forKey: "ocrToMarkdown") as? Bool ?? true
+                    let result = try await ImageOCRService.shared.recognizeText(from: png, markdown: useMarkdown)
+                    let text = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !text.isEmpty else {
+                        self.hideChip()
+                        self.showChip(L10n.tr("editor.ocr.empty"))
+                        return
+                    }
+                    let translated = try await ScreenshotTranslationService.shared.translate(
+                        text: text,
+                        in: self.window
+                    )
+                    self.hideChip()
+                    if let sel = self.selection {
+                        self.presentResultPanel(
+                            title: L10n.tr("editor.translate.result.title"),
+                            text: translated,
+                            selection: sel
+                        )
+                    }
+                } catch {
+                    self.hideChip()
+                    self.showChip(L10n.tr("editor.translate.failed"))
+                }
+            }
+        } else {
+            showChip(L10n.tr("editor.translate.failed"))
+        }
+    }
+
     private func presentOCRResult(text: String, selection: CGRect) {
+        presentResultPanel(title: L10n.tr("editor.ocr.result.title"), text: text, selection: selection)
+    }
+
+    /// 提取文字 / 翻译共用结果面板：标题可换，正文与复制按钮一致。
+    private func presentResultPanel(title: String, text: String, selection: CGRect) {
         ocrPanel?.removeFromSuperview()
         // 结果面板出现时收起工具条与二级面板（浮引：进入结果态后不再显示工具条）
         toolbar.isHidden = true
         optionsBar.isHidden = true
-        let panel = OCRResultPanel(text: text) { [weak self] in
+        let panel = OCRResultPanel(title: title, text: text) { [weak self] in
             guard let self else { return }
             self.ocrPanel?.removeFromSuperview()
             self.ocrPanel = nil
@@ -1296,6 +1341,13 @@ final class ScreenshotSelectionSurfaceView: NSView {
         }
         chipWorkItem = item
         DispatchQueue.main.asyncAfter(deadline: .now() + duration, execute: item)
+    }
+
+    /// 立刻收起当前提示（翻译耗时较长，结果面板出来前要先把「翻译中」去掉）
+    private func hideChip() {
+        chipWorkItem?.cancel()
+        chipView?.removeFromSuperview()
+        chipView = nil
     }
 
     /// 选区 × 冻结帧 + 全部标注 → 扁平化 PNG（像素级裁剪，标注按点坐标缩放）。
@@ -1863,6 +1915,7 @@ final class SelectionToolbar: NSVisualEffectView {
     private var copyButton: ToolbarButton!
     private var saveButton: ToolbarButton!
     private var ocrButton: ToolbarButton!
+    private var translateButton: ToolbarButton!
     private var qrButton: ToolbarButton!
     private var pinButton: ToolbarButton!
     private var shapeButton: ToolbarButton!
@@ -1945,6 +1998,7 @@ final class SelectionToolbar: NSVisualEffectView {
         _ = add(11, .assetWithChevron("More"), L10n.tr("editor.more"))
         stack.addArrangedSubview(Self.divider())
         ocrButton = add(9, .asset("OCR"), L10n.tr("editor.tool.ocr"))
+        translateButton = add(14, .asset("Translate"), L10n.tr("editor.tool.translate"))
         qrButton = add(13, .asset("QRCode"), L10n.tr("editor.tool.qr"))
         stack.addArrangedSubview(Self.divider())
 
@@ -1989,7 +2043,7 @@ final class SelectionToolbar: NSVisualEffectView {
         modeLongButton.selectedState = mode == .longCapture
 
         // 长截图模式隐藏标注区与撤销/保存/钉图/复制组，换成「开始长截图」
-        let annotationTags = [0, 7, 1, 3, 6, 4, 11, 9]
+        let annotationTags = [0, 7, 1, 3, 6, 4, 11, 9, 14]
         for tag in annotationTags {
             toolButtons[tag]?.isHidden = mode == .longCapture
         }
@@ -2005,6 +2059,7 @@ final class SelectionToolbar: NSVisualEffectView {
         copyButton.isEnabled = hasSelection
         saveButton.isEnabled = hasSelection
         ocrButton.isEnabled = hasSelection
+        translateButton.isEnabled = hasSelection
         qrButton.isEnabled = hasSelection
         pinButton.isEnabled = hasSelection
         switch tool {
@@ -2588,7 +2643,7 @@ final class OCRResultPanel: NSView {
     private let text: String
     private let onClose: () -> Void
 
-    init(text: String, onClose: @escaping () -> Void) {
+    init(title titleText: String, text: String, onClose: @escaping () -> Void) {
         self.text = text
         self.onClose = onClose
         super.init(frame: .zero)
@@ -2602,7 +2657,7 @@ final class OCRResultPanel: NSView {
         layer?.shadowOffset = NSSize(width: 0, height: -4)
         updateChromeColors()
 
-        let title = NSTextField(labelWithString: L10n.tr("editor.ocr.result.title"))
+        let title = NSTextField(labelWithString: titleText)
         title.font = .systemFont(ofSize: 15, weight: .semibold)
         title.textColor = .labelColor
         title.translatesAutoresizingMaskIntoConstraints = false

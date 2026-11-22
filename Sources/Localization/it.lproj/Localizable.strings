@@ -280,6 +280,10 @@
 "editor.tool.highlighter" = "Evidenziatore";
 "editor.tool.pointer" = "Seleziona";
 "editor.tool.ocr" = "Estrai testo";
+"editor.tool.translate" = "Traduci";
+"editor.translate.working" = "Traduzione in corso…";
+"editor.translate.failed" = "Traduzione non riuscita";
+"editor.translate.result.title" = "Risultato della traduzione";
 "editor.tool.pin" = "Fissa sullo schermo";
 "editor.copy" = "Copia";
 "editor.highlight.placeholder" = "Max 16 caratteri";

@@ -307,6 +307,10 @@
 "editor.tool.highlighter" = "Highlighter";
 "editor.tool.pointer" = "Select";
 "editor.tool.ocr" = "Extract text";
+"editor.tool.translate" = "Translate";
+"editor.translate.working" = "Translating…";
+"editor.translate.failed" = "Translation failed";
+"editor.translate.result.title" = "Translation Result";
 "editor.tool.pin" = "Pin to screen";
 "editor.copy" = "Copy";
 "editor.highlight.placeholder" = "Up to 16 characters";

@@ -280,6 +280,10 @@
 "editor.tool.highlighter" = "Маркер";
 "editor.tool.pointer" = "Выбрать";
 "editor.tool.ocr" = "Извлечь текст";
+"editor.tool.translate" = "Перевести";
+"editor.translate.working" = "Перевод…";
+"editor.translate.failed" = "Не удалось перевести";
+"editor.translate.result.title" = "Результат перевода";
 "editor.tool.pin" = "Закрепить на экране";
 "editor.copy" = "Копировать";
 "editor.highlight.placeholder" = "До 16 символов";

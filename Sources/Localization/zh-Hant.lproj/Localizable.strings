@@ -279,6 +279,10 @@
 "editor.tool.highlighter" = "螢光筆";
 "editor.tool.pointer" = "選擇";
 "editor.tool.ocr" = "擷取文字";
+"editor.tool.translate" = "翻譯";
+"editor.translate.working" = "翻譯中…";
+"editor.translate.failed" = "翻譯失敗";
+"editor.translate.result.title" = "翻譯結果";
 "editor.tool.pin" = "釘在螢幕";
 "editor.copy" = "複製";
 "editor.highlight.placeholder" = "最多輸入 16 個字元";

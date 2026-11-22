@@ -280,6 +280,10 @@
 "editor.tool.highlighter" = "Stabilo";
 "editor.tool.pointer" = "Pilih";
 "editor.tool.ocr" = "Ekstrak teks";
+"editor.tool.translate" = "Terjemahkan";
+"editor.translate.working" = "Menerjemahkan…";
+"editor.translate.failed" = "Gagal menerjemahkan";
+"editor.translate.result.title" = "Hasil terjemahan";
 "editor.tool.pin" = "Sematkan ke layar";
 "editor.copy" = "Salin";
 "editor.highlight.placeholder" = "Maks. 16 karakter";

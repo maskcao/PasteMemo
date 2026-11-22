@@ -143,6 +143,10 @@
 "editor.tool.highlighter" = "蛍光ペン";
 "editor.tool.pointer" = "選択";
 "editor.tool.ocr" = "テキストを抽出";
+"editor.tool.translate" = "翻訳";
+"editor.translate.working" = "翻訳中…";
+"editor.translate.failed" = "翻訳失敗";
+"editor.translate.result.title" = "翻訳結果";
 "editor.tool.pin" = "画面にピン留め";
 "editor.copy" = "コピー";
 "editor.highlight.placeholder" = "16文字まで";
