@@ -1246,3 +1246,15 @@
 "screenshot.delay.5" = "5 秒";
 "screenshot.delay.10" = "10 秒";
 "editor.saved.named" = "已儲存「%@」";
+
+// 二级样式面板补齐（形状菜单 / 文字加粗与对齐）
+"editor.tool.triangle" = "三角形";
+"editor.tool.pentagon" = "五邊形";
+"editor.tool.hexagon" = "六邊形";
+"editor.tool.star" = "星形";
+"editor.tool.speechBubble" = "對話氣泡";
+"editor.tool.callout" = "標註氣泡";
+"editor.text.bold" = "加粗";
+"editor.align.left" = "左對齊";
+"editor.align.center" = "置中對齊";
+"editor.align.right" = "右對齊";

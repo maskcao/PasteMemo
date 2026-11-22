@@ -1260,3 +1260,15 @@
 "screenshot.delay.5" = "5 detik";
 "screenshot.delay.10" = "10 detik";
 "editor.saved.named" = "Disimpan “%@”";
+
+// 二级样式面板补齐（形状菜单 / 文字加粗与对齐）
+"editor.tool.triangle" = "Segitiga";
+"editor.tool.pentagon" = "Segi Lima";
+"editor.tool.hexagon" = "Segi Enam";
+"editor.tool.star" = "Bintang";
+"editor.tool.speechBubble" = "Gelembung Bicara";
+"editor.tool.callout" = "Keterangan";
+"editor.text.bold" = "Tebal";
+"editor.align.left" = "Rata Kiri";
+"editor.align.center" = "Rata Tengah";
+"editor.align.right" = "Rata Kanan";

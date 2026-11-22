@@ -1236,3 +1236,15 @@
 "screenshot.delay.5" = "5 seconds";
 "screenshot.delay.10" = "10 seconds";
 "editor.saved.named" = "Saved “%@”";
+
+// 二级样式面板补齐（形状菜单 / 文字加粗与对齐）
+"editor.tool.triangle" = "Triangle";
+"editor.tool.pentagon" = "Pentagon";
+"editor.tool.hexagon" = "Hexagon";
+"editor.tool.star" = "Star";
+"editor.tool.speechBubble" = "Speech Bubble";
+"editor.tool.callout" = "Callout";
+"editor.text.bold" = "Bold";
+"editor.align.left" = "Align Left";
+"editor.align.center" = "Align Center";
+"editor.align.right" = "Align Right";

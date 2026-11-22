@@ -1286,3 +1286,15 @@
 "screenshot.delay.5" = "5秒";
 "screenshot.delay.10" = "10秒";
 "editor.saved.named" = "「%@」を保存しました";
+
+// 二级样式面板补齐（形状菜单 / 文字加粗与对齐）
+"editor.tool.triangle" = "三角形";
+"editor.tool.pentagon" = "五角形";
+"editor.tool.hexagon" = "六角形";
+"editor.tool.star" = "星形";
+"editor.tool.speechBubble" = "ふきだし";
+"editor.tool.callout" = "コールアウト";
+"editor.text.bold" = "太字";
+"editor.align.left" = "左揃え";
+"editor.align.center" = "中央揃え";
+"editor.align.right" = "右揃え";

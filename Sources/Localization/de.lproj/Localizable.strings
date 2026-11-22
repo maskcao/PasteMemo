@@ -1272,3 +1272,15 @@
 "screenshot.delay.5" = "5 Sekunden";
 "screenshot.delay.10" = "10 Sekunden";
 "editor.saved.named" = "„%@“ gespeichert";
+
+// 二级样式面板补齐（形状菜单 / 文字加粗与对齐）
+"editor.tool.triangle" = "Dreieck";
+"editor.tool.pentagon" = "Fünfeck";
+"editor.tool.hexagon" = "Sechseck";
+"editor.tool.star" = "Stern";
+"editor.tool.speechBubble" = "Sprechblase";
+"editor.tool.callout" = "Legende";
+"editor.text.bold" = "Fett";
+"editor.align.left" = "Linksbündig";
+"editor.align.center" = "Zentriert";
+"editor.align.right" = "Rechtsbündig";

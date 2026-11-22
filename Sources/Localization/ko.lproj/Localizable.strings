@@ -1288,3 +1288,15 @@
 "screenshot.delay.5" = "5초";
 "screenshot.delay.10" = "10초";
 "editor.saved.named" = "「%@」 저장됨";
+
+// 二级样式面板补齐（形状菜单 / 文字加粗与对齐）
+"editor.tool.triangle" = "삼각형";
+"editor.tool.pentagon" = "오각형";
+"editor.tool.hexagon" = "육각형";
+"editor.tool.star" = "별";
+"editor.tool.speechBubble" = "말풍선";
+"editor.tool.callout" = "콜아웃";
+"editor.text.bold" = "굵게";
+"editor.align.left" = "왼쪽 정렬";
+"editor.align.center" = "가운데 정렬";
+"editor.align.right" = "오른쪽 정렬";

@@ -1260,3 +1260,15 @@
 "screenshot.delay.5" = "5 секунд";
 "screenshot.delay.10" = "10 секунд";
 "editor.saved.named" = "Сохранено «%@»";
+
+// 二级样式面板补齐（形状菜单 / 文字加粗与对齐）
+"editor.tool.triangle" = "Треугольник";
+"editor.tool.pentagon" = "Пятиугольник";
+"editor.tool.hexagon" = "Шестиугольник";
+"editor.tool.star" = "Звезда";
+"editor.tool.speechBubble" = "Облачко";
+"editor.tool.callout" = "Выноска";
+"editor.text.bold" = "Полужирный";
+"editor.align.left" = "По левому краю";
+"editor.align.center" = "По центру";
+"editor.align.right" = "По правому краю";

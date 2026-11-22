@@ -1250,3 +1250,15 @@
 "screenshot.delay.5" = "5 secondi";
 "screenshot.delay.10" = "10 secondi";
 "editor.saved.named" = "Salvato «%@»";
+
+// 二级样式面板补齐（形状菜单 / 文字加粗与对齐）
+"editor.tool.triangle" = "Triangolo";
+"editor.tool.pentagon" = "Pentagono";
+"editor.tool.hexagon" = "Esagono";
+"editor.tool.star" = "Stella";
+"editor.tool.speechBubble" = "Palloncino";
+"editor.tool.callout" = "Didascalia";
+"editor.text.bold" = "Grassetto";
+"editor.align.left" = "Allinea a sinistra";
+"editor.align.center" = "Allinea al centro";
+"editor.align.right" = "Allinea a destra";

@@ -217,6 +217,9 @@ final class ScreenshotSelectionSurfaceView: NSView {
     /// 形状按钮记住上一次选的形状（矩形/椭圆），面板里的下拉也能改。
     private var shapeKind: ScreenshotAnnotation.Kind = .rectangle
     private var colorIndex = 0
+    /// 文字标注加粗与对齐（0 左 / 1 中 / 2 右），浮引样式面板
+    var textBold = false
+    var textAlign = 0
     private var weightIndex = 1
     /// 二级面板的可调参数：线宽倍率 / 荧光笔透明度 / 马赛克透明度 / 箭头样式 / 马赛克形状 / 字号
     private var strokeScale: CGFloat = 1.8
@@ -256,16 +259,17 @@ final class ScreenshotSelectionSurfaceView: NSView {
     private let handleSize: CGFloat = 9
 
     /// FloGravity 色板：红 / 绿 / 蓝 / 紫 / 白 / 黑 / 跟随主题 / 自定义
+    /// 浮引 7 色命名色板（墨色/红/橙/黄/绿/蓝/紫）
     private static let nsPalette: [NSColor] = [
-        NSColor(red: 1.00, green: 0.27, blue: 0.23, alpha: 1),
-        NSColor(red: 0.20, green: 0.78, blue: 0.35, alpha: 1),
-        NSColor(red: 0.00, green: 0.48, blue: 1.00, alpha: 1),
-        NSColor(red: 0.68, green: 0.32, blue: 0.88, alpha: 1),
-        NSColor.white,
-        NSColor(red: 0.10, green: 0.10, blue: 0.12, alpha: 1),
-        NSColor(red: 0.10, green: 0.10, blue: 0.12, alpha: 1),
+        NSColor(red: 0.11, green: 0.11, blue: 0.12, alpha: 1),  // 墨色
+        NSColor(red: 1.00, green: 0.27, blue: 0.23, alpha: 1),  // 红
+        NSColor(red: 1.00, green: 0.62, blue: 0.04, alpha: 1),  // 橙
+        NSColor(red: 1.00, green: 0.84, blue: 0.04, alpha: 1),  // 黄
+        NSColor(red: 0.19, green: 0.82, blue: 0.35, alpha: 1),  // 绿
+        NSColor(red: 0.04, green: 0.52, blue: 1.00, alpha: 1),  // 蓝
+        NSColor(red: 0.75, green: 0.35, blue: 0.95, alpha: 1),  // 紫
     ]
-    static var customPaletteColor = NSColor(red: 0.68, green: 0.32, blue: 0.88, alpha: 1)
+    static var customPaletteColor = NSColor(red: 0.75, green: 0.35, blue: 0.95, alpha: 1)
 
     /// 选区比例约束（"free" / "1:1" / "4:3" / "16:9"），More 菜单设置并持久化
     static var constraintKey: String {
@@ -705,8 +709,9 @@ final class ScreenshotSelectionSurfaceView: NSView {
         field.isBordered = false
         field.drawsBackground = false
         field.focusRingType = .none
-        field.font = .systemFont(ofSize: textFontSize, weight: .semibold)
+        field.font = .systemFont(ofSize: textFontSize, weight: textBold ? .bold : .semibold)
         field.textColor = Self.paletteColor(colorIndex)
+        field.alignment = [.left, .center, .right][min(max(textAlign, 0), 2)]
         field.placeholderString = L10n.tr("editor.tool.text")
         field.delegate = self
         addSubview(field)
@@ -729,6 +734,8 @@ final class ScreenshotSelectionSurfaceView: NSView {
             var annotation = ScreenshotAnnotation(kind: .text, colorIndex: colorIndex, weightIndex: weightIndex, start: origin, end: origin)
             annotation.text = text
             annotation.fontSize = fontSize
+            annotation.isBold = textBold
+            annotation.alignIndex = textAlign
             annotations.append(annotation)
         }
         needsDisplay = true
@@ -809,10 +816,24 @@ final class ScreenshotSelectionSurfaceView: NSView {
             if captureMode == .screenshot { showMoreMenu(from: control) }
         case 2: if captureMode == .screenshot { toggleTool(.ellipse) }
         case 603: if captureMode == .screenshot { toggleTool(.roundedRect) }
+        case 604: if captureMode == .screenshot { toggleTool(.triangle) }
+        case 605: if captureMode == .screenshot { toggleTool(.pentagon) }
+        case 606: if captureMode == .screenshot { toggleTool(.hexagon) }
+        case 607: if captureMode == .screenshot { toggleTool(.star) }
+        case 608: if captureMode == .screenshot { toggleTool(.speechBubble) }
+        case 609: if captureMode == .screenshot { toggleTool(.callout) }
         case 620...623:
             Self.constraintKey = ["free", "1:1", "4:3", "16:9"][control.tag - 620]
         case 630...633:
             ScreenshotCapture.setDelayPreset(control.tag - 630)
+        case 430:
+            textBold.toggle()
+            needsDisplay = true
+            syncToolbar()
+        case 431...433:
+            textAlign = control.tag - 431
+            needsDisplay = true
+            syncToolbar()
         case 3: if captureMode == .screenshot { toggleTool(.arrow) }
         case 4: if captureMode == .screenshot { toggleTool(.pen) }
         case 5: if captureMode == .screenshot { toggleTool(.mosaic) }
@@ -825,12 +846,8 @@ final class ScreenshotSelectionSurfaceView: NSView {
         case 511...514:
             widthPreset = control.tag - 511
             strokeScale = [0.9, 1.8, 2.8, 1.8][widthPreset]
-        case 101...106:
+        case 101...107:
             colorIndex = control.tag - 101
-            needsDisplay = true
-            syncToolbar()
-        case 107:
-            colorIndex = 6
             needsDisplay = true
             syncToolbar()
         case 108:
@@ -1626,6 +1643,61 @@ final class ScreenshotSelectionSurfaceView: NSView {
             color.setStroke()
             path.stroke()
 
+        case .triangle, .pentagon, .hexagon, .star, .speechBubble, .callout:
+            // 与 SwiftUI 渲染共用同一几何（顶点换算成 NSBezierPath）
+            let insetRect = a.rect.insetBy(dx: stroke / 2, dy: stroke / 2)
+            let path = NSBezierPath()
+            path.lineWidth = stroke
+            color.setStroke()
+            switch a.kind {
+            case .triangle, .pentagon, .hexagon:
+                let sides: CGFloat = a.kind == .triangle ? 3 : (a.kind == .pentagon ? 5 : 6)
+                let radius = min(insetRect.width, insetRect.height) / 2
+                let scaleX = insetRect.width / (radius * 2)
+                let scaleY = insetRect.height / (radius * 2)
+                for i in 0..<Int(sides) {
+                    let angle = -Double.pi / 2 + Double(i) * (2 * .pi / Double(sides))
+                    let point = CGPoint(
+                        x: insetRect.midX + cos(angle) * radius * scaleX,
+                        y: insetRect.midY + sin(angle) * radius * scaleY
+                    )
+                    if i == 0 { path.move(to: point) } else { path.line(to: point) }
+                }
+                path.close()
+            case .star:
+                let outer = min(insetRect.width, insetRect.height) / 2
+                let inner = outer * 0.42
+                let scaleX = insetRect.width / (outer * 2)
+                let scaleY = insetRect.height / (outer * 2)
+                for i in 0..<10 {
+                    let radius = i % 2 == 0 ? outer : inner
+                    let angle = -Double.pi / 2 + Double(i) * (.pi / 5)
+                    let point = CGPoint(
+                        x: insetRect.midX + cos(angle) * radius * scaleX,
+                        y: insetRect.midY + sin(angle) * radius * scaleY
+                    )
+                    if i == 0 { path.move(to: point) } else { path.line(to: point) }
+                }
+                path.close()
+            default:
+                let tail: CGFloat = min(insetRect.width, insetRect.height) * 0.25
+                if a.kind == .speechBubble {
+                    let bubble = CGRect(x: insetRect.minX, y: insetRect.minY, width: insetRect.width, height: max(insetRect.height - tail, insetRect.height * 0.5))
+                    let radius = min(min(bubble.width, bubble.height) * 0.2, 18)
+                    path.append(NSBezierPath(roundedRect: bubble, xRadius: radius, yRadius: radius))
+                    path.move(to: CGPoint(x: bubble.minX + bubble.width * 0.22, y: bubble.maxY - stroke))
+                    path.line(to: CGPoint(x: insetRect.minX + tail * 0.35, y: insetRect.maxY))
+                    path.line(to: CGPoint(x: bubble.minX + bubble.width * 0.42, y: bubble.maxY - stroke))
+                } else {
+                    let bubble = CGRect(x: insetRect.minX, y: insetRect.minY, width: insetRect.width, height: max(insetRect.height - tail, insetRect.height * 0.5))
+                    path.append(NSBezierPath(ovalIn: bubble))
+                    path.move(to: CGPoint(x: bubble.maxX - bubble.width * 0.40, y: bubble.maxY - stroke))
+                    path.line(to: CGPoint(x: insetRect.maxX - tail * 0.35, y: insetRect.maxY))
+                    path.line(to: CGPoint(x: bubble.maxX - bubble.width * 0.20, y: bubble.maxY - stroke))
+                }
+            }
+            path.stroke()
+
         case .pen, .highlighter:
             let line = a.points.isEmpty ? [a.start, a.end] : a.points
             guard line.count >= 2 else { break }
@@ -1688,13 +1760,16 @@ final class ScreenshotSelectionSurfaceView: NSView {
             let fontSize = a.fontSize > 0
                 ? a.fontSize
                 : AnnotationStyle.fontSize(imageWidth: imageWidth) * AnnotationStyle.textScales[a.weightIndex]
-            let font = NSFont.systemFont(ofSize: fontSize, weight: .semibold)
+            let font = NSFont.systemFont(ofSize: fontSize, weight: a.isBold ? .bold : .semibold)
             let alpha = a.opacity > 0 ? a.opacity : 1
+            let paragraph = NSMutableParagraphStyle()
+            paragraph.alignment = [.left, .center, .right][min(max(a.alignIndex, 0), 2)]
             let attrs: [NSAttributedString.Key: Any] = [
                 .font: font,
                 .foregroundColor: color.withAlphaComponent(alpha),
+                .paragraphStyle: paragraph,
             ]
-            (a.text as NSString).draw(at: a.start, withAttributes: attrs)
+            (a.text as NSString).draw(with: CGRect(origin: a.start, size: CGSize(width: bounds.width - a.start.x, height: 200)), options: [.usesLineFragmentOrigin], withAttributes: attrs)
         }
     }
 
@@ -1920,6 +1995,12 @@ final class SelectionToolbar: NSVisualEffectView {
         case .rectangle: setShapeAsset("ShapeRectangle")
         case .roundedRect: setShapeAsset("ShapeRoundedRectangle")
         case .ellipse: setShapeAsset("ShapeEllipse")
+        case .triangle: setShapeAsset("ShapeTriangle")
+        case .pentagon: setShapeAsset("ShapePentagon")
+        case .hexagon: setShapeAsset("ShapeHexagon")
+        case .star: setShapeAsset("ShapeStar")
+        case .speechBubble: setShapeAsset("ShapeSpeechBubble")
+        case .callout: setShapeAsset("Callout")
         default: break
         }
     }
@@ -1932,7 +2013,7 @@ final class SelectionToolbar: NSVisualEffectView {
 
     private static func tag(for tool: ScreenshotAnnotation.Kind?) -> Int? {
         switch tool {
-        case .rectangle, .roundedRect, .ellipse: return 1
+        case .rectangle, .roundedRect, .ellipse, .triangle, .pentagon, .hexagon, .star, .speechBubble, .callout: return 1
         case .arrow: return 3
         case .pen: return 4
         case .mosaic: return 5
@@ -1957,6 +2038,8 @@ final class SelectionOptionsBar: NSVisualEffectView {
     private var sizeButton: PopupSizeButton?
     private var shapeButton: PopupShapeButton?
     private var widthButtons: [Int: ToolbarButton] = [:]
+    private var boldButtons: [Int: ToolbarButton] = [:]
+    private var alignButtons: [Int: ToolbarButton] = [:]
     private var previewDot: NSView?
 
     init(target: AnyObject, action: Selector) {
@@ -2020,13 +2103,18 @@ final class SelectionOptionsBar: NSVisualEffectView {
             rebuild(for: tool, shapeKind: shapeKind, widthPreset: widthPreset, strokeScale: strokeScale, opacity: activeOpacity, arrowStyle: arrowStyle, mosaicStyle: mosaicStyle, fontSize: fontSize)
             configuredTool = tool
         }
-        shapeButton?.titleText = shapeKind == .ellipse ? L10n.tr("editor.tool.ellipse") : L10n.tr("editor.tool.rectangle")
+        shapeButton?.titleText = PopupShapeButton.shapeTitle(shapeKind)
+        shapeButton?.currentKind = shapeKind
         for (index, button) in widthButtons { button.selectedState = index == widthPreset }
         opacitySlider?.doubleValue = Double(activeOpacity)
         opacityValueLabel?.stringValue = "\(Int(round(activeOpacity * 100))) %"
         for (index, button) in colorButtons { button.selectedState = index == colorIndex }
         for (index, button) in arrowButtons { button.selectedState = index == arrowStyle }
         for (index, button) in mosaicButtons { button.selectedState = index == mosaicStyle }
+        if let surface = target as? ScreenshotSelectionSurfaceView {
+            for (_, button) in boldButtons { button.selectedState = surface.textBold }
+            for (index, button) in alignButtons { button.selectedState = index == surface.textAlign }
+        }
         previewDot?.layer?.backgroundColor = ScreenshotSelectionSurfaceView.paletteColor(colorIndex).cgColor
         sizeButton?.titleText = "\(Int(fontSize))"
     }
@@ -2054,6 +2142,8 @@ final class SelectionOptionsBar: NSVisualEffectView {
         arrowButtons.removeAll()
         mosaicButtons.removeAll()
         widthButtons.removeAll()
+        boldButtons.removeAll()
+        alignButtons.removeAll()
         opacitySlider = nil
         opacityValueLabel = nil
         sizeButton = nil
@@ -2061,7 +2151,7 @@ final class SelectionOptionsBar: NSVisualEffectView {
         previewDot = nil
 
         switch tool {
-        case .rectangle, .roundedRect, .ellipse:
+        case .rectangle, .roundedRect, .ellipse, .triangle, .pentagon, .hexagon, .star, .speechBubble, .callout:
             addShapeControl(kind: shapeKind)
             addDivider()
             addWidthControl(preset: widthPreset)
@@ -2100,6 +2190,24 @@ final class SelectionOptionsBar: NSVisualEffectView {
             addDivider()
             addOpacityControl(value: opacity)
         case .text:
+            // 对齐浮引文字面板：加粗 + 对齐 | 字号 | 色板
+            let boldButton = ToolbarButton(look: .symbol("bold"), tooltip: L10n.tr("editor.text.bold"), target: target, action: action)
+            boldButton.tag = 430
+            boldButton.size = NSSize(width: 28, height: 28)
+            boldButton.selectedState = textBold
+            boldButtons[0] = boldButton
+            stack.addArrangedSubview(boldButton)
+            let alignSymbols = ["text.alignleft", "text.aligncenter", "text.alignright"]
+            let alignTooltips = ["editor.align.left", "editor.align.center", "editor.align.right"]
+            for index in 0..<3 {
+                let button = ToolbarButton(look: .symbol(alignSymbols[index]), tooltip: L10n.tr(alignTooltips[index]), target: target, action: action)
+                button.tag = 431 + index
+                button.size = NSSize(width: 28, height: 28)
+                button.selectedState = textAlign == index
+                alignButtons[index] = button
+                stack.addArrangedSubview(button)
+            }
+            addDivider()
             addTextSizeControl(fontSize: fontSize)
             addDivider()
             addColors()
@@ -2125,10 +2233,10 @@ final class SelectionOptionsBar: NSVisualEffectView {
     }
 
     private func addColors() {
+        // 浮引 7 色命名色板（墨色/红/橙/黄/绿/蓝/紫）+ 自定义色
         for index in 0..<ScreenshotSelectionSurfaceView.paletteCount {
             let look: ToolbarButton.Look
             switch index {
-            case 6: look = .themeSwatch
             case 7: look = .customSwatch
             default: look = .color(ScreenshotSelectionSurfaceView.paletteColor(index))
             }
@@ -2337,11 +2445,23 @@ final class PopupShapeButton: NSButton {
         didSet { needsDisplay = true }
     }
     private let shapeMenu: NSMenu
+    var currentKind: ScreenshotAnnotation.Kind
     private let shapeWidth: CGFloat
 
     init(current: ScreenshotAnnotation.Kind, target: AnyObject?, action: Selector) {
+        currentKind = current
         let menu = NSMenu()
-        for (tag, key) in [(601, "editor.tool.rectangle"), (603, "editor.tool.roundedRect"), (602, "editor.tool.ellipse")] {
+        for (tag, key) in [
+            (601, "editor.tool.rectangle"),
+            (603, "editor.tool.roundedRect"),
+            (602, "editor.tool.ellipse"),
+            (604, "editor.tool.triangle"),
+            (605, "editor.tool.pentagon"),
+            (606, "editor.tool.hexagon"),
+            (607, "editor.tool.star"),
+            (608, "editor.tool.speechBubble"),
+            (609, "editor.tool.callout"),
+        ] {
             let item = NSMenuItem(title: L10n.tr(key), action: action, keyEquivalent: "")
             item.target = target
             item.tag = tag
@@ -2349,9 +2469,11 @@ final class PopupShapeButton: NSButton {
         }
         shapeMenu = menu
         let font = NSFont.systemFont(ofSize: 12, weight: .medium)
+        let longest = (L10n.tr("editor.tool.speechBubble") as NSString).size(withAttributes: [.font: font]).width
         let widest = max(
             (L10n.tr("editor.tool.rectangle") as NSString).size(withAttributes: [.font: font]).width,
-            (L10n.tr("editor.tool.ellipse") as NSString).size(withAttributes: [.font: font]).width
+            (L10n.tr("editor.tool.ellipse") as NSString).size(withAttributes: [.font: font]).width,
+            longest
         )
         shapeWidth = ceil(widest) + 34
         titleText = ""
@@ -2364,7 +2486,34 @@ final class PopupShapeButton: NSButton {
             widthAnchor.constraint(equalToConstant: shapeWidth),
             heightAnchor.constraint(equalToConstant: 24),
         ])
-        titleText = current == .ellipse ? L10n.tr("editor.tool.ellipse") : L10n.tr("editor.tool.rectangle")
+        titleText = Self.shapeTitle(current)
+    }
+
+    /// 形状下拉按钮显示的名称（对齐浮引形状菜单）
+    static func shapeTitle(_ kind: ScreenshotAnnotation.Kind) -> String {
+        switch kind {
+        case .rectangle: return L10n.tr("editor.tool.rectangle")
+        case .roundedRect: return L10n.tr("editor.tool.roundedRect")
+        case .ellipse: return L10n.tr("editor.tool.ellipse")
+        case .triangle: return L10n.tr("editor.tool.triangle")
+        case .pentagon: return L10n.tr("editor.tool.pentagon")
+        case .hexagon: return L10n.tr("editor.tool.hexagon")
+        case .star: return L10n.tr("editor.tool.star")
+        case .speechBubble: return L10n.tr("editor.tool.speechBubble")
+        case .callout: return L10n.tr("editor.tool.callout")
+        default: return L10n.tr("editor.tool.rectangle")
+        }
+    }
+
+    /// 弹出菜单前同步当前形状勾选态
+    func syncMenuSelection(_ kind: ScreenshotAnnotation.Kind) {
+        let tagMap: [ScreenshotAnnotation.Kind: Int] = [
+            .rectangle: 601, .roundedRect: 603, .ellipse: 602, .triangle: 604,
+            .pentagon: 605, .hexagon: 606, .star: 607, .speechBubble: 608, .callout: 609,
+        ]
+        for item in shapeMenu.items {
+            item.state = item.tag == tagMap[kind] ? .on : .off
+        }
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
@@ -2401,6 +2550,7 @@ final class PopupShapeButton: NSButton {
     }
 
     override func mouseDown(with event: NSEvent) {
+        syncMenuSelection(currentKind)
         shapeMenu.popUp(positioning: nil, at: NSPoint(x: 0, y: bounds.maxY + 4), in: self)
     }
 }
