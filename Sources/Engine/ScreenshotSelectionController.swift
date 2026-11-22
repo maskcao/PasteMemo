@@ -1255,8 +1255,15 @@ final class ScreenshotSelectionSurfaceView: NSView {
                         )
                     }
                 } catch {
+                    NSLog("Screenshot translation failed: %@", String(describing: error))
                     self.hideChip()
-                    self.showChip(L10n.tr("editor.translate.failed"))
+                    // 把系统给的原因一并显示出来，便于定位是语言包未下载还是语言对不支持
+                    let generic = L10n.tr("editor.translate.failed")
+                    let reason = error.localizedDescription
+                    let message = (reason.isEmpty || reason == generic)
+                        ? generic
+                        : "\(generic)：\(String(reason.prefix(80)))"
+                    self.showChip(message, duration: 6)
                 }
             }
         } else {

@@ -28,9 +28,12 @@ final class ScreenshotTranslationService {
         cancelPending()
         pendingToken &+= 1
         let token = pendingToken
+        // 目标语言必须落在系统支持列表里：中文要用 zh-Hans / zh-Hant，
+        // 直接用 "zh" 会被 Translation 判为不支持的语言对，导致一调用就失败。
+        let pair = await Self.resolvePair(for: text)
         let configuration = TranslationSession.Configuration(
-            source: nil,
-            target: Self.targetLanguage(for: text)
+            source: pair.source,
+            target: pair.target
         )
 
         return try await withCheckedThrowingContinuation { continuation in
@@ -109,13 +112,59 @@ final class ScreenshotTranslationService {
     }
 
     /// 源语言与系统首选语言相同 → 翻英文；否则翻成系统首选语言。
-    private static func targetLanguage(for text: String) -> Locale.Language {
-        let systemCode = String((Locale.preferredLanguages.first ?? "en").prefix(2)).lowercased()
-        let detected = NLLanguageRecognizer.dominantLanguage(for: text)?.rawValue.lowercased()
-        if detected == systemCode {
-            return Locale.Language(identifier: systemCode == "en" ? "zh-Hans" : "en")
+    /// 所有语言都先按 `LanguageAvailability` 的支持列表做归一化（中文区分简繁）。
+    /// 故意声明为 nonisolated：`LanguageAvailability` 不是 Sendable，
+    /// 在 MainActor 上创建再跨出去调用会触发 strict concurrency 报错。
+    private nonisolated static func resolvePair(for text: String) async -> (source: Locale.Language?, target: Locale.Language) {
+        let availability = LanguageAvailability()
+        let supported = await availability.supportedLanguages
+        let english = supportedLanguage(matching: "en", in: supported) ?? Locale.Language(identifier: "en")
+        let system = supportedLanguage(matching: Locale.preferredLanguages.first ?? "en", in: supported) ?? english
+
+        let detected = NLLanguageRecognizer.dominantLanguage(for: text).flatMap {
+            supportedLanguage(matching: $0.rawValue, in: supported)
         }
-        return Locale.Language(identifier: systemCode)
+        let systemCode = system.languageCode?.identifier.lowercased()
+        let detectedCode = detected?.languageCode?.identifier.lowercased()
+
+        var target = system
+        if let detectedCode, detectedCode == systemCode {
+            target = systemCode == "en"
+                ? (supportedLanguage(matching: "zh-Hans", in: supported) ?? english)
+                : english
+        }
+        if let detected, isSameLanguage(detected, target) {
+            target = isSameLanguage(detected, english)
+                ? (supportedLanguage(matching: "zh-Hans", in: supported) ?? english)
+                : english
+        }
+
+        // 源语言已明确时先确认语言对可用，不可用就退回英文
+        if let detected {
+            let status = await availability.status(from: detected, to: target)
+            if status == .unsupported {
+                target = english
+            }
+        }
+        return (detected, target)
+    }
+
+    /// 在系统支持列表里按语言码（中文再按简繁）找最合适的 `Locale.Language`。
+    private nonisolated static func supportedLanguage(matching identifier: String, in supported: [Locale.Language]) -> Locale.Language? {
+        let wanted = Locale.Language(identifier: identifier)
+        guard let code = wanted.languageCode?.identifier.lowercased() else { return nil }
+        let matches = supported.filter { $0.languageCode?.identifier.lowercased() == code }
+        guard !matches.isEmpty else { return nil }
+        if let script = wanted.script,
+           let exact = matches.first(where: { $0.script == script }) {
+            return exact
+        }
+        return matches.first
+    }
+
+    private nonisolated static func isSameLanguage(_ a: Locale.Language, _ b: Locale.Language) -> Bool {
+        a.languageCode?.identifier.lowercased() == b.languageCode?.identifier.lowercased()
+            && (a.script == nil || b.script == nil || a.script == b.script)
     }
 }
 
@@ -135,11 +184,17 @@ private struct TranslationRunnerView: View {
         Color.clear
             .frame(width: 1, height: 1)
             .translationTask(configuration) { @Sendable session in
+                NSLog("Screenshot translation session started")
                 do {
-                    try await session.prepareTranslation()
+                    // 源语言为空时 prepareTranslation() 会报 unableToIdentifyLanguage；
+                    // 这种情况直接交给 translate() 自动识别（它会自己准备语言包）。
+                    if configuration.source != nil {
+                        try await session.prepareTranslation()
+                    }
                     let response = try await session.translate(text)
                     await completion(.success(response.targetText))
                 } catch {
+                    NSLog("Screenshot translation session error: %@", String(describing: error))
                     await completion(.failure(error.localizedDescription))
                 }
             }
