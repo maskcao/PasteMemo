@@ -77,29 +77,7 @@ final class ScreenshotSelectionController: NSObject {
             panels.append(panel)
             panel.showPanel()
         }
-        restoreRecentSelection()
         return true
-    }
-
-    /// 对齐 FloGravity CaptureRecentSelectionStore：把上次框选的选区恢复为初始选区
-    private func restoreRecentSelection() {
-        let saved = UserDefaults.standard.string(forKey: "lastSelectionFrame") ?? ""
-        guard !saved.isEmpty else { return }
-        let global = NSRectFromString(saved)
-        for panel in panels {
-            let frame = panel.frame
-            let local = CGRect(
-                x: global.minX - frame.minX,
-                y: frame.maxY - global.maxY,
-                width: global.width,
-                height: global.height
-            )
-            guard local.minX >= -1, local.minY >= -1,
-                  local.maxX <= frame.width + 1, local.maxY <= frame.height + 1,
-                  let surface = panel.contentView as? ScreenshotSelectionSurfaceView else { continue }
-            surface.restoreSelection(local.integral)
-            break
-        }
     }
 
     func confirmSelection(pngData: Data) {
@@ -344,6 +322,12 @@ final class ScreenshotSelectionSurfaceView: NSView {
     }
 
     private func syncToolbar() {
+        // 识别结果面板开着时不显示工具条
+        if ocrPanel != nil {
+            toolbar.isHidden = true
+            optionsBar.isHidden = true
+            return
+        }
         toolbar.update(
             mode: captureMode,
             tool: activeTool,
@@ -554,9 +538,6 @@ final class ScreenshotSelectionSurfaceView: NSView {
         if dragMode == .drawing, let sel = selection,
            sel.width < 6 || sel.height < 6 {
             selection = nil
-        }
-        if dragMode == .drawing, let sel = selection, sel.width >= 6, sel.height >= 6 {
-            recordRecentSelection(sel)
         }
         dragMode = .none
         resizeEdge = .none
@@ -1189,26 +1170,6 @@ final class ScreenshotSelectionSurfaceView: NSView {
         )
     }
 
-    /// 记录最近选区（全局屏幕坐标，顶左原点），下次截图自动恢复（对齐 CaptureRecentSelectionStore）
-    private func recordRecentSelection(_ rect: CGRect) {
-        guard let win = window else { return }
-        let frame = win.screen?.frame ?? win.frame
-        let global = CGRect(
-            x: frame.minX + rect.minX,
-            y: frame.maxY - rect.maxY,
-            width: rect.width,
-            height: rect.height
-        )
-        UserDefaults.standard.set(NSStringFromRect(global.integral), forKey: "lastSelectionFrame")
-    }
-
-    /// 恢复最近选区（controller.begin 之后调用）
-    func restoreSelection(_ rect: CGRect) {
-        selection = rect
-        syncToolbar()
-        needsDisplay = true
-    }
-
     /// 识别二维码：选区干净底图跑 Vision 条码识别，内容进剪贴板（对齐 FloGravity「识别二维码」）
     private func recognizeQRCode() {
         guard selection != nil, let png = croppedBasePNG() else { return }
@@ -1262,9 +1223,16 @@ final class ScreenshotSelectionSurfaceView: NSView {
 
     private func presentOCRResult(text: String, selection: CGRect) {
         ocrPanel?.removeFromSuperview()
+        // 结果面板出现时收起工具条与二级面板（浮引：进入结果态后不再显示工具条）
+        toolbar.isHidden = true
+        optionsBar.isHidden = true
         let panel = OCRResultPanel(text: text) { [weak self] in
-            self?.ocrPanel?.removeFromSuperview()
-            self?.ocrPanel = nil
+            guard let self else { return }
+            self.ocrPanel?.removeFromSuperview()
+            self.ocrPanel = nil
+            // 关闭结果面板后恢复工具条
+            self.syncToolbar()
+            self.needsDisplay = true
         }
         // 位置（对齐浮引）：优先选区右侧；右侧不够放左侧；两侧都不够则贴屏幕右缘，绝不放正中遮挡
         let size = panel.idealSize
@@ -2622,30 +2590,32 @@ final class OCRResultPanel: NSView {
         closeButton.translatesAutoresizingMaskIntoConstraints = false
         addSubview(closeButton)
 
-        // NSTextView 必须显式配置尺寸/伸缩行为，否则 frame 为 0 时文字完全不可见（表现为空白卡片）
-        let textView = NSTextView(frame: NSRect(x: 0, y: 0, width: 372, height: 220))
-        textView.isSelectable = true
-        textView.isEditable = false
-        textView.drawsBackground = false
-        textView.textContainerInset = NSSize(width: 0, height: 2)
-        textView.font = .systemFont(ofSize: 14)
-        textView.textColor = .labelColor
-        textView.isVerticallyResizable = true
-        textView.isHorizontallyResizable = false
-        textView.minSize = NSSize(width: 0, height: 0)
-        textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
-        textView.autoresizingMask = [.width]
-        textView.textContainer?.widthTracksTextView = true
-        textView.textContainer?.containerSize = NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude)
-        textView.string = text
+        // 用多行可选中 NSTextField 而不是 NSTextView：后者在 NSScrollView 里若尺寸/容器没配好
+        // 会完全不显示文字（表现为空白卡片），TextField 的排版是自适应的，稳定得多。
+        let body = NSTextField(wrappingLabelWithString: text)
+        body.isSelectable = true
+        body.isEditable = false
+        body.drawsBackground = false
+        body.isBordered = false
+        body.font = .systemFont(ofSize: 14)
+        body.textColor = .labelColor
+        body.maximumNumberOfLines = 0
+        body.lineBreakMode = .byWordWrapping
+        body.preferredMaxLayoutWidth = 372
+        body.translatesAutoresizingMaskIntoConstraints = false
+
         let scroll = NSScrollView(frame: .zero)
-        scroll.documentView = textView
         scroll.hasVerticalScroller = true
         scroll.drawsBackground = false
         scroll.borderType = .noBorder
         scroll.autohidesScrollers = true
         scroll.translatesAutoresizingMaskIntoConstraints = false
+        let clip = scroll.contentView
+        clip.documentView = body
         addSubview(scroll)
+        // documentView 宽度锁定为滚动区宽度，高度由文本自然撑开
+        body.widthAnchor.constraint(equalTo: clip.widthAnchor).isActive = true
+        body.topAnchor.constraint(equalTo: clip.topAnchor).isActive = true
 
         let copyButton = NSButton(title: L10n.tr("action.copy"), target: self, action: #selector(copyClicked))
         copyButton.isBordered = false
