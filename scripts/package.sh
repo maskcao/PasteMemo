@@ -174,13 +174,92 @@ cp -R "$APP_DIR" "$STAGING_DIR/"
 ln -s /Applications "$STAGING_DIR/Applications"
 rm -f "$DMG_PATH"
 
+# 带背景图、图标位置和安装提示的 DMG。Finder 的视图设置（.DS_Store）只能
+# 通过 AppleScript 写入，所以在 CI 的 GUI 会话里先挂一个读写镜像设置好再压缩。
+# 任何一步失败都退回普通 DMG，保证打包不中断。
+make_styled_dmg() {
+  local tmp_dmg="$DIST_DIR/.${APP_NAME}-rw.dmg"
+  local mount_dir="/Volumes/$APP_NAME"
+  local bg_dir="$STAGING_DIR/.background"
+  local script_file="$DIST_DIR/.dmg-layout.applescript"
+
+  rm -rf "$bg_dir"
+  mkdir -p "$bg_dir"
+  if ! swift "$ROOT_DIR/scripts/make-dmg-background.swift" "$bg_dir/background.tiff"; then
+    return 1
+  fi
+
+  rm -f "$tmp_dmg"
+  if ! hdiutil create -volname "$APP_NAME" -srcfolder "$STAGING_DIR" -ov \
+    -format UDRW -fs HFS+ "$tmp_dmg" >/dev/null; then
+    return 1
+  fi
+  if ! hdiutil attach "$tmp_dmg" -readwrite -noverify -noautoopen >/dev/null; then
+    rm -f "$tmp_dmg"
+    return 1
+  fi
+
+  # 卷图标（可选）
+  if [[ -f "$ICON_FILE" ]] && command -v SetFile >/dev/null 2>&1; then
+    cp "$ICON_FILE" "$mount_dir/.VolumeIcon.icns" 2>/dev/null || true
+    SetFile -a C "$mount_dir" >/dev/null 2>&1 || true
+  fi
+
+  sleep 1
+  cat > "$script_file" <<APPLESCRIPT
+set diskName to "$APP_NAME"
+tell application "Finder"
+  tell disk diskName
+    open
+    set current view of container window to icon view
+    set toolbar visible of container window to false
+    set statusbar visible of container window to false
+    set the bounds of container window to {200, 120, 860, 520}
+    set viewOptions to the icon view options of container window
+    set arrangement of viewOptions to not arranged
+    set icon size of viewOptions to 128
+    set text size of viewOptions to 13
+    set background picture of viewOptions to file ".background:background.tiff"
+    set position of item "$APP_NAME.app" of container window to {165, 190}
+    set position of item "Applications" of container window to {495, 190}
+    update without registering applications
+    delay 1
+    close
+  end tell
+end tell
+APPLESCRIPT
+
+  local layout_ok=1
+  # 90s 兜底：Finder 在无 GUI 权限时可能弹授权框，不能让它把构建挂死
+  perl -e 'alarm 90; exec @ARGV' osascript "$script_file" >/dev/null 2>&1 || layout_ok=0
+  rm -f "$script_file"
+  sync
+
+  hdiutil detach "$mount_dir" -force >/dev/null 2>&1 || true
+  if [[ "$layout_ok" -ne 1 ]]; then
+    rm -f "$tmp_dmg"
+    return 1
+  fi
+
+  if ! hdiutil convert "$tmp_dmg" -format UDZO -imagekey zlib-level=9 -o "$DMG_PATH" >/dev/null; then
+    rm -f "$tmp_dmg"
+    return 1
+  fi
+  rm -f "$tmp_dmg"
+  return 0
+}
+
 printf '[package] creating dmg %s\n' "$(basename "$DMG_PATH")"
-hdiutil create \
-  -volname "$APP_NAME" \
-  -srcfolder "$STAGING_DIR" \
-  -ov \
-  -format UDZO \
-  "$DMG_PATH" >/dev/null
+if ! make_styled_dmg; then
+  printf '[package] styled dmg failed, falling back to plain dmg\n'
+  rm -f "$DMG_PATH"
+  hdiutil create \
+    -volname "$APP_NAME" \
+    -srcfolder "$STAGING_DIR" \
+    -ov \
+    -format UDZO \
+    "$DMG_PATH" >/dev/null
+fi
 
 rm -rf "$STAGING_DIR"
 
