@@ -87,7 +87,18 @@ final class ScreenshotSelectionController: NSObject {
         // 直到点一下才恢复。这里把鼠标所在屏的面板设为 key，热键一响即是十字。
         makeKeyPanelUnderMouse()
         nudgeCursor()
+        primeCandidates()
         return true
+    }
+
+    /// 面板弹出后按当前鼠标位置预置候选窗口：鼠标还没动过就直接点目标窗口时，
+    /// 悬停高亮与「点哪选哪」都能立刻生效。只作用于鼠标所在的那块屏——
+    /// 别的屏上若也留着候选，整屏会被压暗。
+    private func primeCandidates() {
+        let mouseLocation = NSEvent.mouseLocation
+        guard let mouseScreen = NSScreen.screens.first(where: { $0.frame.contains(mouseLocation) }),
+              let target = panels.first(where: { $0.coveredScreen == mouseScreen }) else { return }
+        (target.contentView as? ScreenshotSelectionSurfaceView)?.primeCandidateAtMouse()
     }
 
     /// 把鼠标所在屏幕的面板设为 key window（光标矩形只对 key window 生效）。
@@ -137,6 +148,7 @@ final class ScreenshotSelectionController: NSObject {
         // 恢复后同样把 key 还给鼠标所在屏的面板（光标矩形只在 key window 生效）
         makeKeyPanelUnderMouse()
         nudgeCursor()
+        primeCandidates()
         return result
     }
 
@@ -473,6 +485,19 @@ final class ScreenshotSelectionSurfaceView: NSView {
         )
     }
 
+    /// 全局鼠标位置（左下原点）→ 本视图坐标
+    private func viewPoint(fromGlobal point: CGPoint) -> CGPoint {
+        guard let main = NSScreen.screens.first else { return point }
+        let bottomLeftY = main.frame.height - point.y
+        return CGPoint(x: point.x - screen.frame.minX, y: screen.frame.maxY - bottomLeftY)
+    }
+
+    /// 面板刚弹出时鼠标可能一动没动（用户本来就停在目标窗口上），先按当前鼠标位置
+    /// 预置候选，热键后直接点击也能选整窗。
+    func primeCandidateAtMouse() {
+        refreshCandidate(at: viewPoint(fromGlobal: NSEvent.mouseLocation))
+    }
+
     private func refreshCandidate(at point: CGPoint) {
         let global = globalPoint(from: point)
         // 窗口列表本身是从前到后排序的：取第一个命中的就是视觉上最上层的那个，
@@ -492,6 +517,14 @@ final class ScreenshotSelectionSurfaceView: NSView {
         let point = self.point(for: event)
         window?.makeFirstResponder(self)
         finishTextEntry(commit: true)
+
+        // 候选窗口此前只靠 mouseMoved 更新。用户常常是热键唤起面板后直接点目标窗口，
+        // 鼠标一下没动过 → 候选为空 → 点下去变成一次 0 像素拖拽、什么都没选中
+        // （「截图预览里选不中 PasteMemo 自己的界面」就是这个）。按下时按点击
+        // 位置再算一次候选，指哪选哪。
+        if selection == nil, activeTool == nil {
+            refreshCandidate(at: point)
+        }
 
         if let sel = selection {
             let edge = handleEdge(at: point, in: sel)
@@ -647,6 +680,8 @@ final class ScreenshotSelectionSurfaceView: NSView {
 
     override func mouseExited(with event: NSEvent) {
         magnifierPoint = nil
+        // 鼠标离开本屏：清掉这块屏上的候选高亮，免得另一块屏还留着旧高亮/压暗
+        candidate = nil
         needsDisplay = true
     }
 
