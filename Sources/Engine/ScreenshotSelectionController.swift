@@ -82,7 +82,22 @@ final class ScreenshotSelectionController: NSObject {
             panels.append(panel)
             panel.showPanel()
         }
+        nudgeCursor()
         return true
+    }
+
+    /// 窗口服务器只在鼠标事件到来时才重新裁定光标归属：热键唤起后面板虽已置顶成 key，
+    /// 但鼠标没动，光标仍停留在上一个应用的箭头上（NSCursor.set 也抢不过）——
+    /// 这就是「热键后是箭头、点一下才变十字」的根因。
+    /// 在当前光标原位补发一个 mouseMoved 事件，强制窗口服务器把光标裁定给最前面的
+    /// 全屏面板，AppKit 随之重建光标矩形并应用十字准星（顺带让放大镜立即出现）。
+    private func nudgeCursor() {
+        guard let location = CGEvent(source: nil)?.location,
+              let moved = CGEvent(
+                  mouseEventSource: nil, mouseType: .mouseMoved,
+                  mouseCursorPosition: location, mouseButton: .left
+              ) else { return }
+        moved.post(tap: .cghidEventTap)
     }
 
     func confirmSelection(pngData: Data) {
@@ -107,6 +122,7 @@ final class ScreenshotSelectionController: NSObject {
             panel.level = .screenSaver
             panel.makeKey()
         }
+        nudgeCursor()
         return result
     }
 
