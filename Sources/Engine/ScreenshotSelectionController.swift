@@ -2419,6 +2419,25 @@ extension ScreenshotSelectionSurfaceView: NSTextFieldDelegate {
 
 // MARK: - Toolbar（参考截图：白色玻璃主条 + 工具二级面板）
 
+/// 工具条里的细分隔线：draw 时解析 separatorColor，主题切换重绘后自动跟随
+/// （layer 背景色在外观切换时不会自我更新）。
+private final class SeparatorLine: NSView {
+    override func draw(_ dirtyRect: NSRect) {
+        NSColor.separatorColor.setFill()
+        bounds.fill()
+    }
+}
+
+extension NSView {
+    /// 外观切换后，自定义 draw(_) 的子视图不会被 AppKit 自动标记重绘，图标会
+    /// 停留在旧主题的颜色上（深色条上叠浅色图标几乎不可见）；把整棵子树显式
+    /// 标记为待重绘，按钮/分隔线才会按新外观重新着色。
+    func invalidateDisplayRecursively() {
+        needsDisplay = true
+        subviews.forEach { $0.invalidateDisplayRecursively() }
+    }
+}
+
 final class SelectionToolbar: NSVisualEffectView {
     private var toolButtons: [Int: ToolbarButton] = [:]
     private var undoButton: ToolbarButton!
@@ -2537,13 +2556,14 @@ final class SelectionToolbar: NSVisualEffectView {
             chromeTintView.layer?.backgroundColor = Self.chromeTint.cgColor
             layer?.borderColor = NSColor.separatorColor.cgColor
         }
+        // 按钮/分隔线是自定义绘制，外观切换后必须显式标记重绘，
+        // 否则图标停留在旧主题的颜色上（深色条上叠浅色图标几乎不可见）。
+        invalidateDisplayRecursively()
     }
 
     private static func divider() -> NSView {
-        let line = NSView()
+        let line = SeparatorLine()
         line.translatesAutoresizingMaskIntoConstraints = false
-        line.wantsLayer = true
-        line.layer?.backgroundColor = NSColor.separatorColor.cgColor
         line.widthAnchor.constraint(equalToConstant: 1).isActive = true
         line.heightAnchor.constraint(equalToConstant: 18).isActive = true
         return line
@@ -2629,6 +2649,7 @@ final class SelectionOptionsBar: NSVisualEffectView {
     private var boldButtons: [Int: ToolbarButton] = [:]
     private var alignButtons: [Int: ToolbarButton] = [:]
     private var previewDot: NSView?
+    private weak var sizeChip: NSView?
     private let chromeTintView = NSView()
 
     init(target: AnyObject, action: Selector) {
@@ -2677,7 +2698,12 @@ final class SelectionOptionsBar: NSVisualEffectView {
         effectiveAppearance.performAsCurrentDrawingAppearance {
             chromeTintView.layer?.backgroundColor = SelectionToolbar.chromeTint.cgColor
             layer?.borderColor = NSColor.separatorColor.cgColor
+            // 字号芯片的底/边也是一次性解析的 layer 颜色，一并跟随新外观
+            sizeChip?.layer?.backgroundColor = NSColor.controlBackgroundColor.cgColor
+            sizeChip?.layer?.borderColor = NSColor.separatorColor.cgColor
         }
+        // 同主工具条：自定义绘制的按钮/分隔线需要显式标记重绘
+        invalidateDisplayRecursively()
     }
 
     func configure(
@@ -2922,6 +2948,7 @@ final class SelectionOptionsBar: NSVisualEffectView {
         chip.layer?.cornerRadius = 7
         chip.layer?.borderWidth = 1
         chip.layer?.borderColor = NSColor.black.withAlphaComponent(0.1).cgColor
+        sizeChip = chip
         chip.translatesAutoresizingMaskIntoConstraints = false
         chip.widthAnchor.constraint(equalToConstant: 26).isActive = true
         chip.heightAnchor.constraint(equalToConstant: 26).isActive = true
@@ -2968,10 +2995,8 @@ final class SelectionOptionsBar: NSVisualEffectView {
     }
 
     private func addDivider() {
-        let line = NSView()
+        let line = SeparatorLine()
         line.translatesAutoresizingMaskIntoConstraints = false
-        line.wantsLayer = true
-        line.layer?.backgroundColor = NSColor.separatorColor.cgColor
         line.widthAnchor.constraint(equalToConstant: 1).isActive = true
         line.heightAnchor.constraint(equalToConstant: 18).isActive = true
         stack.addArrangedSubview(line)
@@ -3409,6 +3434,13 @@ final class ToolbarButton: NSButton {
 
     static func dismissHoverTip() {
         HoverTipPanel.shared.hide()
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        // 图标颜色在 draw 时按当时的外观解析；主题切换后必须重绘，
+        // 否则旧主题的图标颜色会留在新主题的底色上（对比度可能极差）。
+        needsDisplay = true
     }
 
     override func draw(_ dirtyRect: NSRect) {
