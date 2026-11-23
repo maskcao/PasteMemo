@@ -174,6 +174,8 @@ final class ScreenshotSelectionController: NSObject {
             makeKeyAndOrderFront(nil)
             makeFirstResponder(contentView)
             contentView?.needsDisplay = true
+            invalidateCursorRects(for: contentView!)
+            (contentView as? ScreenshotSelectionSurfaceView)?.applySelectionCursor()
         }
     }
 }
@@ -246,8 +248,14 @@ final class ScreenshotSelectionSurfaceView: NSView {
 
     private enum ResizeEdge { case none, topLeft, top, topRight, left, right, bottomLeft, bottom, bottomRight }
 
-    private let magnifierDiameter: CGFloat = 88
-    private let magnifierZoom: CGFloat = 5
+    /// 放大镜为正方形预览窗：边长更大、倍数更低，方便看清周边
+    private let magnifierSide: CGFloat = 132
+    private let magnifierZoom: CGFloat = 3
+    private let magnifierCornerRadius: CGFloat = 8
+    /// 十字准星用亮黄色（应用图标的黄色调）
+    private static let magnifierCrosshairColor = NSColor(
+        red: 1.0, green: 0.84, blue: 0.04, alpha: 1
+    )
     private let handleSize: CGFloat = 9
 
     /// FloGravity 色板：红 / 绿 / 蓝 / 紫 / 白 / 黑 / 跟随主题 / 自定义
@@ -1512,6 +1520,12 @@ final class ScreenshotSelectionSurfaceView: NSView {
 
     // MARK: - Cursor
 
+    /// 热键唤起面板后立刻把光标切成十字准星，不必等鼠标移动
+    func applySelectionCursor() {
+        window?.invalidateCursorRects(for: self)
+        NSCursor.crosshair.set()
+    }
+
     override func resetCursorRects() {
         addCursorRect(bounds, cursor: .crosshair)
         if let sel = selection {
@@ -1870,19 +1884,19 @@ final class ScreenshotSelectionSurfaceView: NSView {
     private func drawMagnifier(at point: CGPoint) {
         guard let ctx = NSGraphicsContext.current else { return }
         // 光标右下偏移，贴边自动翻到左上
-        var center = CGPoint(x: point.x + magnifierDiameter / 2 + 20, y: point.y + magnifierDiameter / 2 + 20)
-        if center.x + magnifierDiameter / 2 > bounds.width || center.y + magnifierDiameter / 2 > bounds.height {
-            center = CGPoint(x: point.x - magnifierDiameter / 2 - 20, y: point.y - magnifierDiameter / 2 - 20)
+        var center = CGPoint(x: point.x + magnifierSide / 2 + 20, y: point.y + magnifierSide / 2 + 20)
+        if center.x + magnifierSide / 2 > bounds.width || center.y + magnifierSide / 2 > bounds.height {
+            center = CGPoint(x: point.x - magnifierSide / 2 - 20, y: point.y - magnifierSide / 2 - 20)
         }
-        let circle = NSRect(
-            x: center.x - magnifierDiameter / 2, y: center.y - magnifierDiameter / 2,
-            width: magnifierDiameter, height: magnifierDiameter
+        let lens = NSRect(
+            x: center.x - magnifierSide / 2, y: center.y - magnifierSide / 2,
+            width: magnifierSide, height: magnifierSide
         ).clamped(to: bounds.size)
 
-        let clip = NSBezierPath(ovalIn: circle)
+        let clip = NSBezierPath(roundedRect: lens, xRadius: magnifierCornerRadius, yRadius: magnifierCornerRadius)
         clip.addClip()
         // 从冻结帧取光标邻域像素，nearest 放大出马赛克感
-        let samplePt = magnifierDiameter / magnifierZoom
+        let samplePt = magnifierSide / magnifierZoom
         let samplePixel = CGRect(
             x: (point.x - samplePt / 2) * pixelScale,
             y: (point.y - samplePt / 2) * pixelScale,
@@ -1894,29 +1908,38 @@ final class ScreenshotSelectionSurfaceView: NSView {
            let cropped = cg.cropping(to: samplePixel.intersection(CGRect(x: 0, y: 0, width: CGFloat(cg.width), height: CGFloat(cg.height)))) {
             let sample = NSImage(cgImage: cropped, size: CGSize(width: samplePt, height: samplePt))
             ctx.imageInterpolation = .none
-            sample.draw(in: circle)
+            sample.draw(in: lens)
             ctx.imageInterpolation = .default
         }
         clip.setClip()
 
-        // 十字准星
-        let cross = magnifierDiameter * 0.22
-        NSColor.white.setStroke()
+        // 十字准星（亮黄色 + 深色衬底，浅色画面上也看得清）
+        let cross = magnifierSide * 0.14
         let crossPath = NSBezierPath()
-        crossPath.lineWidth = 1
         crossPath.move(to: CGPoint(x: center.x - cross, y: center.y))
         crossPath.line(to: CGPoint(x: center.x + cross, y: center.y))
         crossPath.move(to: CGPoint(x: center.x, y: center.y - cross))
         crossPath.line(to: CGPoint(x: center.x, y: center.y + cross))
+        NSColor.black.withAlphaComponent(0.35).setStroke()
+        crossPath.lineWidth = 3.5
+        crossPath.stroke()
+        Self.magnifierCrosshairColor.setStroke()
+        crossPath.lineWidth = 1.5
         crossPath.stroke()
 
         // 白色外圈 + 深色内衬
         NSColor.white.setStroke()
-        let border = NSBezierPath(ovalIn: circle.insetBy(dx: 1, dy: 1))
+        let border = NSBezierPath(
+            roundedRect: lens.insetBy(dx: 1, dy: 1),
+            xRadius: magnifierCornerRadius - 1, yRadius: magnifierCornerRadius - 1
+        )
         border.lineWidth = 2
         border.stroke()
         NSColor(white: 0.2, alpha: 0.9).setStroke()
-        let inner = NSBezierPath(ovalIn: circle.insetBy(dx: 3, dy: 3))
+        let inner = NSBezierPath(
+            roundedRect: lens.insetBy(dx: 3, dy: 3),
+            xRadius: magnifierCornerRadius - 2, yRadius: magnifierCornerRadius - 2
+        )
         inner.lineWidth = 1
         inner.stroke()
     }
