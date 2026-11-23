@@ -65,6 +65,9 @@ final class ScreenshotSelectionController: NSObject {
             frozen.append((screen, image, scale))
         }
         guard !frozen.isEmpty else { return false }
+        // 在激活 App 之前抓窗口列表：顺序要和刚冻结的那一帧一致，
+        // 否则本应用被提到最前后，悬停高亮会选到冻结画面里并不在最上层的窗口。
+        let windows = ScreenshotSelectionSurfaceView.captureWindowList()
 
         isActive = true
         let hideDock = UserDefaults.standard.bool(forKey: "hideDockIcon")
@@ -73,7 +76,9 @@ final class ScreenshotSelectionController: NSObject {
         }
         NSApp.activate(ignoringOtherApps: true)
         for (screen, image, scale) in frozen {
-            let panel = SelectionPanel(screen: screen, image: image, pixelScale: scale, owner: self)
+            let panel = SelectionPanel(
+                screen: screen, image: image, pixelScale: scale, owner: self, windows: windows
+            )
             panels.append(panel)
             panel.showPanel()
         }
@@ -138,13 +143,20 @@ final class ScreenshotSelectionController: NSObject {
     private final class SelectionPanel: NSPanel {
         override var canBecomeKey: Bool { true }
 
-        init(screen: NSScreen, image: NSImage, pixelScale: CGFloat, owner: ScreenshotSelectionController) {
+        init(
+            screen: NSScreen,
+            image: NSImage,
+            pixelScale: CGFloat,
+            owner: ScreenshotSelectionController,
+            windows: [(rect: CGRect, area: CGFloat)]
+        ) {
             let surface = ScreenshotSelectionSurfaceView(
                 frame: NSRect(origin: .zero, size: screen.frame.size),
                 image: image,
                 pixelScale: pixelScale,
                 screen: screen,
-                owner: owner
+                owner: owner,
+                windows: windows
             )
             super.init(contentRect: screen.frame, styleMask: .borderless, backing: .buffered, defer: false)
             level = .screenSaver
@@ -235,7 +247,7 @@ final class ScreenshotSelectionSurfaceView: NSView {
     private enum ResizeEdge { case none, topLeft, top, topRight, left, right, bottomLeft, bottom, bottomRight }
 
     private let magnifierDiameter: CGFloat = 88
-    private let magnifierZoom: CGFloat = 8
+    private let magnifierZoom: CGFloat = 5
     private let handleSize: CGFloat = 9
 
     /// FloGravity 色板：红 / 绿 / 蓝 / 紫 / 白 / 黑 / 跟随主题 / 自定义
@@ -257,13 +269,20 @@ final class ScreenshotSelectionSurfaceView: NSView {
         set { UserDefaults.standard.set(newValue, forKey: "selectionConstraintRatio") }
     }
 
-    init(frame: NSRect, image: NSImage, pixelScale: CGFloat, screen: NSScreen, owner: ScreenshotSelectionController) {
+    init(
+        frame: NSRect,
+        image: NSImage,
+        pixelScale: CGFloat,
+        screen: NSScreen,
+        owner: ScreenshotSelectionController,
+        windows: [(rect: CGRect, area: CGFloat)]
+    ) {
         self.image = image
         self.pixelScale = pixelScale
         self.screen = screen
         self.owner = owner
+        self.cachedWindows = windows
         super.init(frame: frame)
-        cachedWindows = Self.captureWindowList()
         let full = NSRect(origin: .zero, size: frame.size)
         addTrackingArea(NSTrackingArea(
             rect: full,
@@ -352,7 +371,7 @@ final class ScreenshotSelectionSurfaceView: NSView {
 
     // MARK: - Window snapping
 
-    private static func captureWindowList() -> [(rect: CGRect, area: CGFloat)] {
+    static func captureWindowList() -> [(rect: CGRect, area: CGFloat)] {
         guard let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]] else {
             return []
         }
@@ -398,13 +417,10 @@ final class ScreenshotSelectionSurfaceView: NSView {
 
     private func refreshCandidate(at point: CGPoint) {
         let global = globalPoint(from: point)
-        var best: CGRect?
-        var bestArea = CGFloat.greatestFiniteMagnitude
-        for (rect, area) in cachedWindows where rect.contains(global) && area < bestArea {
-            best = rect
-            bestArea = area
-        }
-        candidate = best.map { viewRect(fromWindowBounds: $0) }
+        // 窗口列表本身是从前到后排序的：取第一个命中的就是视觉上最上层的那个，
+        // 用「面积最小」会把被盖住的小窗口也挑出来，高亮就错位了。
+        candidate = cachedWindows.first { $0.rect.contains(global) }
+            .map { viewRect(fromWindowBounds: $0.rect) }
     }
 
     // MARK: - Mouse
@@ -525,7 +541,7 @@ final class ScreenshotSelectionSurfaceView: NSView {
             return
         }
         if let _ = windowPickOrigin {
-            // 原地点击 = 整窗选中（换选区 = 新画布，旧标注作废）
+            // 原地单击 = 直接截取整窗（对齐系统截图/浮引的「点窗口即截」）
             windowPickOrigin = nil
             selection = windowPickRect
             windowPickRect = nil
@@ -533,8 +549,12 @@ final class ScreenshotSelectionSurfaceView: NSView {
             undoStack = []
             redoStack = []
             dragMode = .none
-            syncToolbar()
-            needsDisplay = true
+            if captureMode == .screenshot {
+                confirm()
+            } else {
+                syncToolbar()
+                needsDisplay = true
+            }
             return
         }
         if dragMode == .drawing, let sel = selection,
@@ -3022,7 +3042,7 @@ final class ToolbarButton: NSButton {
         path.lineWidth = selectedState ? 1.5 : 1
         path.stroke()
         let attrs: [NSAttributedString.Key: Any] = [
-            .font: NSFont.systemFont(ofSize: 11.5, weight: .medium),
+            .font: NSFont.systemFont(ofSize: 12, weight: .semibold),
             .foregroundColor: selectedState ? NSColor.controlAccentColor : tint,
         ]
         let size = (title as NSString).size(withAttributes: attrs)
@@ -3048,7 +3068,8 @@ final class ToolbarButton: NSButton {
 
     private func drawArt(_ name: String, tint: NSColor, chevron: Bool = false) {
         guard let image = Self.art(name) else { return }
-        let side: CGFloat = chevron ? 17 : 19
+        // 线稿 PNG 缩得越小线条越灰，放大一点让描边更实
+        let side: CGFloat = chevron ? 19 : 21
         let originX = chevron ? bounds.midX - side / 2 - 2.5 : bounds.midX - side / 2
         let rect = NSRect(x: originX, y: bounds.midY - side / 2, width: side, height: side)
         NSGraphicsContext.saveGraphicsState()
