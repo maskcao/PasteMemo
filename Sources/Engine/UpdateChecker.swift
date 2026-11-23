@@ -24,10 +24,12 @@ final class UpdateChecker: ObservableObject {
 
     @Published var showUpdateDialog = false
 
-    private let latestJsonURL = "https://www.lifedever.com/PasteMemo/latest.json"
-    private let repoOwner = "lifedever"
-    private let repoName = "PasteMemo-app"
-    private let giteeRepo = "lifedever/pastememo"
+    /// 本仓库自己的静态 feed（可选）：往 main 分支放一个 latest.json 即可生效
+    /// （格式同上游：version / notes_zh / notes_en / downloads / checksums / beta）。
+    /// 没有（404）时自动回落到下面本仓库的 GitHub Releases API。
+    private let latestJsonURL = "https://raw.githubusercontent.com/maskcao/PasteMemo/main/latest.json"
+    private let repoOwner = "maskcao"
+    private let repoName = "PasteMemo"
 
     private var downloadTask: URLSessionDownloadTask?
     private var downloadDelegate: DownloadDelegate?
@@ -82,8 +84,8 @@ final class UpdateChecker: ObservableObject {
         // Reset before each check so a stale beta flag from a previous run
         // doesn't bleed into a stable-channel result.
         isBetaUpdate = false
-        // Same for the expected checksum: a fallback path (Gitee/GitHub API)
-        // has no sha256, so clear any value left over from a prior check to
+        // Same for the expected checksum: the GitHub API fallback has no
+        // sha256, so clear any value left over from a prior check to
         // avoid verifying this download against a stale hash.
         expectedSHA256 = nil
 
@@ -113,24 +115,24 @@ final class UpdateChecker: ObservableObject {
 
         }
 
-        // Fallback: Gitee / GitHub API (for old releases or if JSON unavailable)
+        // Fallback / 主通道：本仓库的 GitHub Releases API（无 latest.json feed 时
+        // 它就是唯一来源；仓库还没有 Release 时查不到版本 → 不弹升级提示）。
         if remoteVersion == nil {
-            var release = await fetchLatestRelease(
-                from: "https://gitee.com/api/v5/repos/\(giteeRepo)/releases"
+            let release = await fetchLatestRelease(
+                from: "https://api.github.com/repos/\(repoOwner)/\(repoName)/releases"
             )
-            if release == nil {
-                release = await fetchLatestRelease(
-                    from: "https://api.github.com/repos/\(repoOwner)/\(repoName)/releases"
-                )
-            }
             if let release {
                 remoteVersion = release.tag_name.trimmingCharacters(in: CharacterSet(charactersIn: "vV"))
                 notes = release.body
                 let arch = currentArch()
                 let dmgName = "\(repoName)-\(remoteVersion!)-\(arch).dmg"
-                archDownloadURL = URL(string: "https://gitee.com/\(giteeRepo)/releases/download/v\(remoteVersion!)/\(dmgName)")
+                // 优先用 Release 资产里本架构 DMG 的真实下载地址；
+                // 没有资产时退回 releases/download 的标准命名。
                 if let dmgAsset = release.assets?.first(where: { $0.name.contains(arch) && $0.name.hasSuffix(".dmg") }) {
+                    archDownloadURL = URL(string: dmgAsset.browser_download_url)
                     totalBytes = Int64(dmgAsset.size ?? 0)
+                } else {
+                    archDownloadURL = URL(string: "https://github.com/\(repoOwner)/\(repoName)/releases/download/v\(remoteVersion!)/\(dmgName)")
                 }
             }
         }
@@ -145,7 +147,7 @@ final class UpdateChecker: ObservableObject {
 
         let arch = currentArch()
         let dmgName = "\(repoName)-\(remoteVersion)-\(arch).dmg"
-        githubFallbackURL = URL(string: "https://www.lifedever.com/PasteMemo/downloads/\(dmgName)")
+        githubFallbackURL = URL(string: "https://github.com/\(repoOwner)/\(repoName)/releases/download/v\(remoteVersion)/\(dmgName)")
         downloadURL = archDownloadURL ?? githubFallbackURL
 
         let skippedVersion = UserDefaults.standard.string(forKey: "skippedVersion")
@@ -357,7 +359,7 @@ final class UpdateChecker: ObservableObject {
             // SemVer fix) to interpret a `1.7.0-beta.1` tag as a stable
             // upgrade target.
             let stable = releases.filter { $0.prerelease != true }
-            // Gitee returns oldest first, GitHub returns newest first — pick highest version
+            // Releases may come back in any order — pick the highest stable version.
             return stable.max { lhs, rhs in
                 let l = lhs.tag_name.trimmingCharacters(in: CharacterSet(charactersIn: "vV"))
                 let r = rhs.tag_name.trimmingCharacters(in: CharacterSet(charactersIn: "vV"))
@@ -414,14 +416,11 @@ final class UpdateChecker: ObservableObject {
         alert.informativeText = L10n.tr("update.check_failed.hint")
         alert.alertStyle = .warning
         alert.addButton(withTitle: L10n.tr("update.check_failed.github"))
-        alert.addButton(withTitle: L10n.tr("update.check_failed.gitee"))
-        alert.addButton(withTitle: L10n.tr("update.check_failed.cancel"))
+        alert.addButton(withTitle: L10n.tr("action.cancel"))
         let response = alert.runModal()
         switch response {
         case .alertFirstButtonReturn:
-            NSWorkspace.shared.open(URL(string: "https://github.com/lifedever/PasteMemo-app/releases")!)
-        case .alertSecondButtonReturn:
-            NSWorkspace.shared.open(URL(string: "https://gitee.com/lifedever/pastememo/releases")!)
+            NSWorkspace.shared.open(URL(string: "https://github.com/\(repoOwner)/\(repoName)/releases")!)
         default:
             break
         }

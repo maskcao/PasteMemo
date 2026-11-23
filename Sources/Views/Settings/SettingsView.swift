@@ -245,7 +245,7 @@ struct SMSCodeSection: View {
     private var feedbackLine: AttributedString {
         var line = AttributedString(L10n.tr("settings.smsCode.feedback") + " ")
         var link = AttributedString(L10n.tr("settings.smsCode.feedbackLink"))
-        link.link = URL(string: "https://github.com/lifedever/PasteMemo-app/issues")
+        link.link = URL(string: "https://github.com/maskcao/PasteMemo/issues")
         link.foregroundColor = Color.accentColor
         return line + link
     }
@@ -1358,13 +1358,13 @@ struct SponsorTab: View {
             }
 
             Section {
-                Link(destination: URL(string: "https://www.lifedever.com")!) {
+                Link(destination: URL(string: "https://github.com/maskcao/PasteMemo")!) {
                     Label(L10n.tr("sponsor.donate"), systemImage: "cup.and.saucer")
                 }
-                Link(destination: URL(string: "https://github.com/lifedever/PasteMemo-app")!) {
+                Link(destination: URL(string: "https://github.com/maskcao/PasteMemo")!) {
                     Label(L10n.tr("sponsor.star"), systemImage: "star")
                 }
-                Link(destination: URL(string: "https://github.com/lifedever/PasteMemo-app/issues")!) {
+                Link(destination: URL(string: "https://github.com/maskcao/PasteMemo/issues")!) {
                     Label(L10n.tr("sponsor.feedback"), systemImage: "bubble.left")
                 }
             }
@@ -1446,9 +1446,9 @@ struct AboutTab: View {
             }
 
             Section {
-                Link(L10n.tr("about.website"), destination: URL(string: "https://www.lifedever.com/PasteMemo/")!)
-                Link(L10n.tr("about.help"), destination: URL(string: "https://www.lifedever.com/PasteMemo/help/")!)
-                Link(L10n.tr("menu.reportIssue"), destination: URL(string: "https://github.com/lifedever/PasteMemo-app/issues")!)
+                Link(L10n.tr("about.website"), destination: URL(string: "https://github.com/maskcao/PasteMemo")!)
+                Link(L10n.tr("about.help"), destination: URL(string: "https://github.com/maskcao/PasteMemo#readme")!)
+                Link(L10n.tr("menu.reportIssue"), destination: URL(string: "https://github.com/maskcao/PasteMemo/issues")!)
             }
 
             Section {
@@ -1458,11 +1458,11 @@ struct AboutTab: View {
                     Text("GPL-3.0")
                         .foregroundStyle(.secondary)
                 }
-                Link(L10n.tr("about.sourceCode"), destination: URL(string: "https://github.com/lifedever/PasteMemo-app")!)
+                Link(L10n.tr("about.sourceCode"), destination: URL(string: "https://github.com/maskcao/PasteMemo")!)
             }
 
             Section {
-                Text("© 2026 lifedever.")
+                Text("© 2026 maskcao.")
                     .foregroundStyle(.tertiary)
                     .font(.caption)
                     .frame(maxWidth: .infinity, alignment: .center)
