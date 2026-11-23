@@ -93,4 +93,44 @@ struct RichTextRenderabilityTests {
         #expect(decoded.string.contains("</Button>"))
         #expect(NativeTextView.isRenderable(decoded))
     }
+
+    // MARK: - 解码丢字符闸门
+    // TRAE 这类源应用写出的 HTML/RTF 编码对不上，AppKit 把解不开的字符统一换成
+    // "?"：问号是合法可渲染字符，码点检查拦不住，于是"文本"模式下整段变成彩色
+    // 问号，切 Auto（走纯文本渲染）才恢复。判据是与纯文本原文对比 "?" 占比。
+
+    @Test("解码成满屏问号而原文干净 → 否决")
+    func questionMarkFloodRejected() {
+        let decoded = attributed(String(repeating: "?", count: 200))
+        #expect(!NativeTextView.isRenderable(decoded, plainText: "id: CVE-2022-34487\ninfo: Shortcode Addons"))
+    }
+
+    @Test("原文本来就满是问号 → 不误伤")
+    func questionMarkFloodWithQuestionMarkPlaintextPasses() {
+        let decoded = attributed(String(repeating: "?", count: 200))
+        let plain = String(repeating: "??? ", count: 80)
+        #expect(NativeTextView.isRenderable(decoded, plainText: plain))
+    }
+
+    @Test("零星问号的正常富文本不受影响")
+    func occasionalQuestionMarksPass() {
+        let decoded = attributed("function ok(a, b) { return a > b ? a : b }\n// 一行中文注释")
+        #expect(NativeTextView.isRenderable(decoded, plainText: decoded.string))
+    }
+
+    @Test("短句里的单个问号不触发（低于绝对数量下限）")
+    func singleQuestionMarkShortTextPasses() {
+        #expect(NativeTextView.isRenderable(attributed("What?"), plainText: "What?"))
+    }
+
+    @Test("U+FFFD 占多数同样否决")
+    func replacementCharacterFloodRejected() {
+        #expect(!NativeTextView.isRenderable(attributed(String(repeating: "\u{FFFD}", count: 10))))
+    }
+
+    @Test("大部分正常 + 夹带少量问号 → 放行")
+    func mostlyIntactWithFewQuestionMarksPasses() {
+        let body = String(repeating: "id: CVE-2022-34487\n", count: 50) + "?"
+        #expect(NativeTextView.isRenderable(attributed(body), plainText: body))
+    }
 }

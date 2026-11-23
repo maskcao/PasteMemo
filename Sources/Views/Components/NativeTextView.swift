@@ -34,7 +34,7 @@ struct NativeTextView: NSViewRepresentable {
 
     /// 可渲染性检查扫描的可见字符上限。足够判定整段是不是坏数据，又不会在
     /// 几十万字的长文档上白跑一遍。
-    static let renderabilityScanLimit = 4_000
+    nonisolated static let renderabilityScanLimit = 4_000
 
     /// Measured plain-text render heights keyed by (text, width, fontSize).
     /// Tiny bounded cache — OCR cards re-evaluate body often but only ever show
@@ -203,7 +203,7 @@ struct NativeTextView: NSViewRepresentable {
             // reference from one detached decode task to this single MainActor consumer — wrap
             // in an unchecked box so the compiler is satisfied.
             let box = await Task.detached(priority: .userInitiated) {
-                UnsafeSendableBox(Self.decode(data: dataLocal, type: typeLocal, maxImageWidth: widthLocal, isDark: isDark))
+                UnsafeSendableBox(Self.decode(data: dataLocal, type: typeLocal, plainText: text, maxImageWidth: widthLocal, isDark: isDark))
             }.value
             guard let attr = box.value else { return }
             guard coordinator.isCurrentDecodeToken(token) else { return }
@@ -218,7 +218,7 @@ struct NativeTextView: NSViewRepresentable {
 
     // MARK: - Decoding (nonisolated: safe on background)
 
-    nonisolated private static func decode(data: Data, type: String?, maxImageWidth: CGFloat, isDark: Bool) -> NSAttributedString? {
+    nonisolated private static func decode(data: Data, type: String?, plainText: String, maxImageWidth: CGFloat, isDark: Bool) -> NSAttributedString? {
         let raw: NSAttributedString?
         switch type {
         case "rtfd":
@@ -234,23 +234,38 @@ struct NativeTextView: NSViewRepresentable {
         }
         // 解不出来、或者解出来是一整段没有任何字体能显示的码点时返回 nil，
         // 调用方保留已经铺好的纯文本渲染。
-        guard let raw, isRenderable(raw) else { return nil }
+        guard let raw, isRenderable(raw, plainText: plainText) else { return nil }
         let adapted = adaptColorsForAppearance(raw, isDark: isDark)
         return scaleAttachmentsToFit(adapted, maxWidth: maxImageWidth)
     }
 
+    /// 解码丢字符的判定阈值。源应用写进剪贴板的 HTML/RTF 编码对不上时（TRAE
+    /// 复制的条目在"文本"模式下整段变彩色问号，切 Auto 走纯文本才恢复），
+    /// AppKit 会把解不开的字符统一替换成 "?" 或 U+FFFD。问号本身完全可渲染，
+    /// 码点检查拦不住，只能对照纯文本原文判 losses。
+    nonisolated private static let lossyCountFloor = 8      // 短句里的零星问号不触发
+    nonisolated private static let lossyRateFloor = 0.15    // 解码结果里 "?" 至少占这个比例
+    nonisolated private static let lossyRateGap = 0.10      // 且要显著高于原文里的 "?" 占比
+    nonisolated private static let plainScanLimit = 20_000  // 原文只扫前缀估占比
+
     /// 解码结果是否值得拿来替换纯文本渲染。
     ///
-    /// 某些来源给出的富文本会把整段正文解成私用区 / 未分配码点，系统里没有任何
-    /// 字体覆盖它们，渲染出来是一排 LastResort 的 "?" 方框——比纯文本还不可读
-    /// （#88：VS Code 复制的代码在"文本"模式下整段变方框，而同一条在列表里
-    /// 显示正常）。这种时候宁可放弃格式，保住内容可读。
+    /// 两道判据：
     ///
-    /// 判据是"过半可见字符不可渲染"而不是"存在即否决"：从终端复制的 Powerline /
-    /// Nerd Font 图标本身就是私用区字符，那些条目只是夹带少量，富文本照常渲染。
-    nonisolated static func isRenderable(_ attributed: NSAttributedString) -> Bool {
+    /// 1. 码点检查——某些来源给出的富文本会把整段正文解成私用区 / 未分配码点，
+    ///    系统里没有任何字体覆盖，渲染出来是一排 LastResort 的 "?" 方框——比纯
+    ///    文本还不可读（#88：VS Code 复制的代码在"文本"模式下整段变方框，而同
+    ///    一条在列表里显示正常）。判据是"过半可见字符不可渲染"而不是"存在即否
+    ///    决"：从终端复制的 Powerline / Nerd Font 图标本身就是私用区字符，那些
+    ///    条目只是夹带少量，富文本照常渲染。
+    ///
+    /// 2. 丢字符检查（传入 `plainText` 时）——解码结果里 "?" / U+FFFD 的占比
+    ///    远高于纯文本原文，说明字符是在富文本解码这一步丢的，宁可放弃格式退回
+    ///    纯文本，保住内容可读。
+    nonisolated static func isRenderable(_ attributed: NSAttributedString, plainText: String? = nil) -> Bool {
         var visible = 0
         var unrenderable = 0
+        var lossy = 0
         for scalar in attributed.string.unicodeScalars {
             // 空白、控制字符、图片占位符不参与判断
             if scalar.value < 0x20 || scalar.value == 0xFFFC || scalar.properties.isWhitespace { continue }
@@ -261,10 +276,42 @@ struct NativeTextView: NSViewRepresentable {
             default:
                 break
             }
+            // U+FFFD 是"转换时丢字符"的通用标记；字面 "?" 则要等和原文对比后才能定罪
+            if scalar.value == 0xFFFD {
+                unrenderable += 1
+                lossy += 1
+            } else if scalar.value == 0x3F {
+                lossy += 1
+            }
             if visible >= renderabilityScanLimit { break }
         }
         guard visible > 0 else { return true }
-        return unrenderable * 2 < visible
+        if unrenderable * 2 >= visible { return false }
+        if let plainText,
+           decodedTextLostCharacters(decodedVisible: visible, decodedLossy: lossy, plainText: plainText) {
+            return false
+        }
+        return true
+    }
+
+    /// 丢字符判定的对比端：解码结果的 "?" 占比要有绝对数量兜底（防 "What?" 这类
+    /// 短句误伤）、够高的占比，且显著高于原文里的 "?" 占比——原文本来就满是
+    /// 问号的条目不受影响。
+    nonisolated private static func decodedTextLostCharacters(decodedVisible: Int, decodedLossy: Int, plainText: String) -> Bool {
+        guard decodedLossy >= lossyCountFloor else { return false }
+        let decodedRate = Double(decodedLossy) / Double(max(decodedVisible, 1))
+        guard decodedRate >= lossyRateFloor else { return false }
+
+        var plainVisible = 0
+        var plainLossy = 0
+        for scalar in plainText.unicodeScalars {
+            if scalar.value < 0x20 || scalar.properties.isWhitespace { continue }
+            plainVisible += 1
+            if scalar.value == 0x3F { plainLossy += 1 }
+            if plainVisible >= plainScanLimit { break }
+        }
+        let plainRate = plainVisible > 0 ? Double(plainLossy) / Double(plainVisible) : 0
+        return decodedRate >= plainRate + lossyRateGap
     }
 
     /// Responsive images: shrink attachments whose intrinsic width exceeds the text container.
