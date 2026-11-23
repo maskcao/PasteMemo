@@ -285,6 +285,8 @@ final class ScreenshotSelectionSurfaceView: NSView {
     private var arrowStyle = 1
     private var mosaicStyle = 0
     private var fontSize: CGFloat = 16
+    /// 记住的标注样式（颜色 / 粗细 / 形状 / 字号……）：截图时沿用上次的选择
+    private var annotationSettings = ScreenshotAnnotationSettings()
     /// 高亮工具的水印文字（参考图面板里的「最多输入 16 个字符」）；非空时点按落一段半透明文字。
     private var highlighterText = ""
     private var draft: ScreenshotAnnotation?
@@ -381,9 +383,70 @@ final class ScreenshotSelectionSurfaceView: NSView {
         optionsBar = SelectionOptionsBar(target: self, action: #selector(toolbarAction(_:)))
         optionsBar.isHidden = true
         addSubview(optionsBar)
+        applyRememberedSettings()
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
+
+    // MARK: - 样式记忆
+
+    /// 套用上次用的标注样式：颜色 / 线宽 / 形状 / 字号……
+    private func applyRememberedSettings() {
+        annotationSettings = ScreenshotAnnotationSettings.load()
+        colorIndex = annotationSettings.colorIndex
+        weightIndex = annotationSettings.weightIndex
+        shapeKind = annotationSettings.shapeKind == 0 ? .rectangle : .ellipse
+        widthPreset = annotationSettings.widthPreset
+        strokeScale = annotationSettings.strokeScale
+        highlighterOpacity = annotationSettings.highlighterOpacity
+        mosaicOpacity = annotationSettings.mosaicOpacity
+        arrowStyle = annotationSettings.arrowStyle
+        mosaicStyle = annotationSettings.mosaicStyle
+        fontSize = CGFloat(annotationSettings.fontSize)
+        textBold = annotationSettings.textBold
+        textAlign = annotationSettings.textAlign
+        Self.customPaletteColor = NSColor(
+            srgbRed: annotationSettings.customColor.r,
+            green: annotationSettings.customColor.g,
+            blue: annotationSettings.customColor.b,
+            alpha: 1
+        )
+    }
+
+    /// 把当前样式记下来，下次截图沿用
+    private func rememberCurrentSettings() {
+        annotationSettings = currentSettingsSnapshot()
+        annotationSettings.save()
+    }
+
+    /// 当前会话生效的样式快照（颜色 / 线宽 / 形状 / 字号……）
+    private func currentSettingsSnapshot() -> ScreenshotAnnotationSettings {
+        var settings = annotationSettings
+        settings.colorIndex = colorIndex
+        settings.weightIndex = weightIndex
+        settings.shapeKind = shapeKind == .ellipse ? 1 : 0
+        settings.widthPreset = widthPreset
+        settings.strokeScale = Double(strokeScale)
+        settings.highlighterOpacity = Double(highlighterOpacity)
+        settings.mosaicOpacity = Double(mosaicOpacity)
+        settings.arrowStyle = arrowStyle
+        settings.mosaicStyle = mosaicStyle
+        settings.fontSize = Double(fontSize)
+        settings.textBold = textBold
+        settings.textAlign = textAlign
+        let custom = Self.customPaletteColor.usingColorSpace(.sRGB) ?? Self.customPaletteColor
+        settings.customColor = ScreenshotAnnotationSettings.RGB(
+            r: Double(custom.redComponent),
+            g: Double(custom.greenComponent),
+            b: Double(custom.blueComponent)
+        )
+        return settings
+    }
+
+    /// 当前生效的标注样式（测试与调试用：改完样式能直接读到落地的值）
+    var appliedAnnotationSettings: ScreenshotAnnotationSettings {
+        currentSettingsSnapshot()
+    }
 
     override var acceptsFirstResponder: Bool { true }
     override var isFlipped: Bool { true }
@@ -884,6 +947,7 @@ final class ScreenshotSelectionSurfaceView: NSView {
                 fontSize = CGFloat(number.doubleValue)
                 needsDisplay = true
             }
+            rememberCurrentSettings()
             window?.makeFirstResponder(self)
             return
         }
@@ -906,6 +970,7 @@ final class ScreenshotSelectionSurfaceView: NSView {
             }
             needsDisplay = true
             syncToolbar()
+            rememberCurrentSettings()
             window?.makeFirstResponder(self)
             return
         }
@@ -925,6 +990,7 @@ final class ScreenshotSelectionSurfaceView: NSView {
                 break
             }
             needsDisplay = true
+            rememberCurrentSettings()
             return
         }
 
@@ -1012,6 +1078,7 @@ final class ScreenshotSelectionSurfaceView: NSView {
         }
         needsDisplay = true
         syncToolbar()
+        rememberCurrentSettings()
         window?.makeFirstResponder(self)
     }
 
@@ -1071,6 +1138,7 @@ final class ScreenshotSelectionSurfaceView: NSView {
         colorIndex = 7
         needsDisplay = true
         syncToolbar()
+        rememberCurrentSettings()
     }
 
     // MARK: - Long capture（对齐 FloGravity 长截图：框选 → 滚动自动拼接 → 预览复制/保存）

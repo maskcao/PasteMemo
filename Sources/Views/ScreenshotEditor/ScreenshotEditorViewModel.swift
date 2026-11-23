@@ -53,8 +53,13 @@ final class ScreenshotEditorViewModel {
     private(set) var undoStack: [Snapshot] = []
     private(set) var redoStack: [Snapshot] = []
     var tool: Tool = .arrow
-    var colorIndex = 0
-    var weightIndex = 1
+    /// 颜色 / 粗细沿用上次的选择（编辑器色板与浮层不是同一套，下标分开记）
+    var colorIndex = 0 {
+        didSet { rememberStyle() }
+    }
+    var weightIndex = 1 {
+        didSet { rememberStyle() }
+    }
     var textDraft: TextDraft?
     private(set) var isCropping = false
     private(set) var cropRect: CGRect?
@@ -67,6 +72,17 @@ final class ScreenshotEditorViewModel {
 
     init(image: NSImage) {
         self.image = image
+        let settings = ScreenshotAnnotationSettings.load()
+        self.colorIndex = settings.editorColorIndex
+        self.weightIndex = settings.editorWeightIndex
+    }
+
+    /// 记住编辑器里选的颜色与粗细，下次打开沿用
+    private func rememberStyle() {
+        var settings = ScreenshotAnnotationSettings.load()
+        settings.editorColorIndex = colorIndex
+        settings.editorWeightIndex = weightIndex
+        settings.save()
     }
 
     // MARK: - Gestures (points already converted to image coordinates)
