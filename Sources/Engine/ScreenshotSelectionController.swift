@@ -449,12 +449,17 @@ final class ScreenshotSelectionSurfaceView: NSView {
         guard let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]] else {
             return []
         }
+        let ownPID = ProcessInfo.processInfo.processIdentifier
         var result: [(CGRect, CGFloat)] = []
         for info in list {
-            // 只取普通层级的窗口。截图浮层自己是 screenSaver 级（layer 1000）、
-            // 钉图/HUD 是浮动级，都会被 layer == 0 过滤掉；
-            // 不再排除本进程的窗口——这样也能框住 PasteMemo 自己的主界面做截图提示。
-            guard (info[kCGWindowLayer as String] as? Int) == 0,
+            // 取普通层级的窗口，外加本进程自己的浮层——快捷粘贴面板挂在
+            // floating/statusBar 层，只认 layer 0 会把 PasteMemo 自己的粘贴板界面
+            // 排除在「点哪选哪」之外（冻结帧里明明有它，却怎么点都选不中）。
+            // 截图选区浮层虽是 screenSaver 级（layer 1000），但列表在本面板创建之前
+            // 抓取，旧浮层也已 orderOut，不会把截图浮层自己算进候选。
+            let layer = info[kCGWindowLayer as String] as? Int ?? -1
+            let ownerPID = info[kCGWindowOwnerPID as String] as? Int ?? -1
+            guard (layer == 0 || ownerPID == ownPID),
                   let dict = info[kCGWindowBounds as String] as? [String: Any]
             else { continue }
             var bounds = CGRect.zero
