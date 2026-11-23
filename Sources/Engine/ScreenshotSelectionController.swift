@@ -304,6 +304,10 @@ final class ScreenshotSelectionSurfaceView: NSView {
     private var windowPickRect: CGRect?
     private var cachedWindows: [(rect: CGRect, area: CGFloat)] = []
 
+    /// 「点一下」与「拖一下」的判定距离（pt）。真人单击时手会抖 5-10px，
+    /// 阈值太小会把「点窗口 = 整框选中」变成误拖拽，窗口选中被丢掉。
+    private static let windowPickClickTolerance: CGFloat = 10
+
     private var toolbar: SelectionToolbar!
     private var optionsBar: SelectionOptionsBar!
 
@@ -588,7 +592,9 @@ final class ScreenshotSelectionSurfaceView: NSView {
         }
         if let origin = windowPickOrigin {
             let travel = hypot(point.x - origin.x, point.y - origin.y)
-            if travel <= 4 {
+            // 点击容差：真人点一下手会抖 5-10px，阈值太小会把「点窗口=整框选中」
+            // 变成一次误拖拽，整窗选中被丢掉（表现为「选不中整框」）。
+            if travel <= Self.windowPickClickTolerance {
                 return
             }
             // 拖出去了：从按下的位置重新开始框选
@@ -645,15 +651,19 @@ final class ScreenshotSelectionSurfaceView: NSView {
             needsDisplay = true
             return
         }
-        if dragMode == .drawing, let sel = selection,
-           sel.width < 6 || sel.height < 6 {
-            // 手抖导致拖拽中途开始、松手时框还很小：如果按下点落在窗口高亮里，
-            // 仍按整窗选中处理，避免「点一下没反应、要点第二下」。
-            if let cand = candidate, cand.contains(dragOrigin) {
-                selection = cand
-                syncToolbar()
-            } else {
-                selection = nil
+        if dragMode == .drawing, let sel = selection {
+            // 手抖导致拖拽中途开始：松手时框可能很小，也可能只挪了几像素。
+            // 只要按下点落在窗口高亮里，就按整窗选中处理——「点窗口 = 整框选中」
+            // 必须稳过一次点击就算数，不能被手的抖动带偏成一个小方框。
+            let travel = hypot(sel.midX - dragOrigin.x, sel.midY - dragOrigin.y)
+            let tiny = sel.width < 6 || sel.height < 6
+            if tiny || travel <= Self.windowPickClickTolerance {
+                if let cand = candidate, cand.contains(dragOrigin) {
+                    selection = cand
+                    syncToolbar()
+                } else if tiny {
+                    selection = nil
+                }
             }
         }
         dragMode = .none
