@@ -541,7 +541,7 @@ final class ScreenshotSelectionSurfaceView: NSView {
             return
         }
         if let _ = windowPickOrigin {
-            // 原地单击 = 直接截取整窗（对齐系统截图/浮引的「点窗口即截」）
+            // 原地单击 = 选中整窗并浮出编辑条（再双击才确认截图）
             windowPickOrigin = nil
             selection = windowPickRect
             windowPickRect = nil
@@ -549,17 +549,20 @@ final class ScreenshotSelectionSurfaceView: NSView {
             undoStack = []
             redoStack = []
             dragMode = .none
-            if captureMode == .screenshot {
-                confirm()
-            } else {
-                syncToolbar()
-                needsDisplay = true
-            }
+            syncToolbar()
+            needsDisplay = true
             return
         }
         if dragMode == .drawing, let sel = selection,
            sel.width < 6 || sel.height < 6 {
-            selection = nil
+            // 手抖导致拖拽中途开始、松手时框还很小：如果按下点落在窗口高亮里，
+            // 仍按整窗选中处理，避免「点一下没反应、要点第二下」。
+            if let cand = candidate, cand.contains(dragOrigin) {
+                selection = cand
+                syncToolbar()
+            } else {
+                selection = nil
+            }
         }
         dragMode = .none
         resizeEdge = .none
