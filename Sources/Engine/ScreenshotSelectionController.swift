@@ -127,6 +127,7 @@ final class ScreenshotSelectionController: NSObject {
         ToolbarButton.dismissHoverTip()
         panels.forEach {
             ($0.contentView as? ScreenshotSelectionSurfaceView)?.abortLongCaptureIfNeeded()
+            ($0.contentView as? ScreenshotSelectionSurfaceView)?.stopCursorAssertion()
             $0.alphaValue = 1
             $0.ignoresMouseEvents = false
             $0.orderOut(nil)
@@ -177,13 +178,12 @@ final class ScreenshotSelectionController: NSObject {
             // 光标同步必须在窗口真正上屏并成为 key 之后做：同步调用时 AppKit 随后的
             // key 窗口光标更新会把 set 的十字覆盖回箭头，而光标矩形要等第一次鼠标
             // 事件才重建——表现为「热键后仍是箭头，点一下才变十字」。
-            // 这里延后到下一轮 runloop 补一次，再隔一小段补第二刀，不依赖鼠标移动。
+            // 除下一轮 runloop 补一次失效+set 外，再启动一小段定时反复断言十字，
+            // 赢下应用激活/窗口服务器光标归属切换的竞态（否则只是「偶尔正常」）。
             DispatchQueue.main.async { [weak self] in
                 self?.syncCursorNow()
             }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
-                self?.syncCursorNow()
-            }
+            (contentView as? ScreenshotSelectionSurfaceView)?.startCursorAssertion()
         }
 
         /// 立即把面板光标定为十字准星（失效旧光标矩形 + 直接 set）。
@@ -454,6 +454,7 @@ final class ScreenshotSelectionSurfaceView: NSView {
     }
 
     override func mouseDown(with event: NSEvent) {
+        stopCursorAssertion()
         let point = self.point(for: event)
         window?.makeFirstResponder(self)
         finishTextEntry(commit: true)
@@ -595,6 +596,7 @@ final class ScreenshotSelectionSurfaceView: NSView {
     }
 
     override func mouseMoved(with event: NSEvent) {
+        stopCursorAssertion()
         let point = self.point(for: event)
         // 选区完成后隐藏放大镜，别挡工具条和标注
         if selection == nil || dragMode != .none {
@@ -1586,6 +1588,39 @@ final class ScreenshotSelectionSurfaceView: NSView {
     }
 
     // MARK: - Cursor
+
+    /// 热键唤起后的一小段时间内反复断言十字光标（50ms × 30 ≈ 1.5s）：
+    /// 应用激活、窗口上屏与窗口服务器的光标归属切换存在竞态，单次 set 可能被
+    /// AppKit 的 key 窗口光标更新覆盖回箭头（「偶尔正常」「点一下才变十字」）。
+    /// 首次鼠标事件后光标矩形 / cursorUpdate 已接管，随即停表。
+    private var cursorAssertTimer: Timer?
+    private var cursorAssertTicksLeft = 0
+
+    func startCursorAssertion() {
+        stopCursorAssertion()
+        cursorAssertTicksLeft = 30
+        let timer = Timer(timeInterval: 0.05, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.assertCrosshairTick() }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        cursorAssertTimer = timer
+        NSCursor.crosshair.set()
+    }
+
+    private func assertCrosshairTick() {
+        guard cursorAssertTicksLeft > 0 else {
+            stopCursorAssertion()
+            return
+        }
+        cursorAssertTicksLeft -= 1
+        NSCursor.crosshair.set()
+    }
+
+    func stopCursorAssertion() {
+        cursorAssertTicksLeft = 0
+        cursorAssertTimer?.invalidate()
+        cursorAssertTimer = nil
+    }
 
     /// AppKit 每次光标同步（窗口成为 key、光标矩形重建、鼠标事件）都会走到这里。
     /// 没有选区时一律十字准星，修「热键刚唤起面板时光标仍是箭头、点一下才变十字」；
