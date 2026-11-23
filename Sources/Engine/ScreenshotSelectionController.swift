@@ -174,8 +174,23 @@ final class ScreenshotSelectionController: NSObject {
             makeKeyAndOrderFront(nil)
             makeFirstResponder(contentView)
             contentView?.needsDisplay = true
-            invalidateCursorRects(for: contentView!)
-            (contentView as? ScreenshotSelectionSurfaceView)?.applySelectionCursor()
+            // 光标同步必须在窗口真正上屏并成为 key 之后做：同步调用时 AppKit 随后的
+            // key 窗口光标更新会把 set 的十字覆盖回箭头，而光标矩形要等第一次鼠标
+            // 事件才重建——表现为「热键后仍是箭头，点一下才变十字」。
+            // 这里延后到下一轮 runloop 补一次，再隔一小段补第二刀，不依赖鼠标移动。
+            DispatchQueue.main.async { [weak self] in
+                self?.syncCursorNow()
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+                self?.syncCursorNow()
+            }
+        }
+
+        /// 立即把面板光标定为十字准星（失效旧光标矩形 + 直接 set）。
+        private func syncCursorNow() {
+            guard let content = contentView else { return }
+            invalidateCursorRects(for: content)
+            NSCursor.crosshair.set()
         }
     }
 }
@@ -1572,10 +1587,15 @@ final class ScreenshotSelectionSurfaceView: NSView {
 
     // MARK: - Cursor
 
-    /// 热键唤起面板后立刻把光标切成十字准星，不必等鼠标移动
-    func applySelectionCursor() {
-        window?.invalidateCursorRects(for: self)
-        NSCursor.crosshair.set()
+    /// AppKit 每次光标同步（窗口成为 key、光标矩形重建、鼠标事件）都会走到这里。
+    /// 没有选区时一律十字准星，修「热键刚唤起面板时光标仍是箭头、点一下才变十字」；
+    /// 有选区后交回光标矩形机制，四边微调的 ↕ ↔ 光标仍由 resetCursorRects 提供。
+    override func cursorUpdate(with event: NSEvent) {
+        if selection == nil {
+            NSCursor.crosshair.set()
+        } else {
+            super.cursorUpdate(with: event)
+        }
     }
 
     override func resetCursorRects() {
