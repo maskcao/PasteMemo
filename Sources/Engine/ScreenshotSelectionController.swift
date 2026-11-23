@@ -82,8 +82,23 @@ final class ScreenshotSelectionController: NSObject {
             panels.append(panel)
             panel.showPanel()
         }
+        // 多显示器：光标矩形只在 key window 上生效（探针实验证实）。最后 showPanel
+        // 的面板会抢到 key，鼠标若停在别的屏上，脚下面板不是 key，十字光标出不来，
+        // 直到点一下才恢复。这里把鼠标所在屏的面板设为 key，热键一响即是十字。
+        makeKeyPanelUnderMouse()
         nudgeCursor()
         return true
+    }
+
+    /// 把鼠标所在屏幕的面板设为 key window（光标矩形只对 key window 生效）。
+    private func makeKeyPanelUnderMouse() {
+        let mouseLocation = NSEvent.mouseLocation
+        guard let mouseScreen = NSScreen.screens.first(where: { $0.frame.contains(mouseLocation) }),
+              let target = panels.first(where: { $0.coveredScreen == mouseScreen }) else { return }
+        target.makeKey()
+        if let content = target.contentView {
+            target.invalidateCursorRects(for: content)
+        }
     }
 
     /// 窗口服务器只在鼠标事件到来时才重新裁定光标归属：热键唤起后面板虽已置顶成 key，
@@ -118,10 +133,9 @@ final class ScreenshotSelectionController: NSObject {
         panels.forEach { $0.level = .normal }
         NSApp.activate(ignoringOtherApps: true)
         let result = panel.runModal()
-        panels.forEach { panel in
-            panel.level = .screenSaver
-            panel.makeKey()
-        }
+        panels.forEach { $0.level = .screenSaver }
+        // 恢复后同样把 key 还给鼠标所在屏的面板（光标矩形只在 key window 生效）
+        makeKeyPanelUnderMouse()
         nudgeCursor()
         return result
     }
@@ -160,6 +174,9 @@ final class ScreenshotSelectionController: NSObject {
     private final class SelectionPanel: NSPanel {
         override var canBecomeKey: Bool { true }
 
+        /// 面板覆盖的屏幕（多显示器下用于把「鼠标所在屏」的面板设为 key）
+        let coveredScreen: NSScreen
+
         init(
             screen: NSScreen,
             image: NSImage,
@@ -167,6 +184,7 @@ final class ScreenshotSelectionController: NSObject {
             owner: ScreenshotSelectionController,
             windows: [(rect: CGRect, area: CGFloat)]
         ) {
+            self.coveredScreen = screen
             let surface = ScreenshotSelectionSurfaceView(
                 frame: NSRect(origin: .zero, size: screen.frame.size),
                 image: image,
@@ -613,6 +631,7 @@ final class ScreenshotSelectionSurfaceView: NSView {
 
     override func mouseMoved(with event: NSEvent) {
         stopCursorAssertion()
+        ensureKeyWindowForCursor()
         let point = self.point(for: event)
         // 选区完成后隐藏放大镜，别挡工具条和标注
         if selection == nil || dragMode != .none {
@@ -1647,6 +1666,18 @@ final class ScreenshotSelectionSurfaceView: NSView {
         } else {
             super.cursorUpdate(with: event)
         }
+    }
+
+    /// 多显示器下的真正根因（探针实验证实）：光标矩形只在 key window 上生效。
+    /// 每块屏各有一个全屏面板，但只有最后 showPanel 的那块是 key——鼠标停在
+    /// 别的屏上时，脚下的面板不是 key，光标矩形被忽略，十字就出不来，
+    /// 直到用户点一下（点按会把该面板变成 key）。这里在鼠标移动时把脚下
+    /// 的面板设为 key，让十字光标跟着鼠标跨屏。
+    private func ensureKeyWindowForCursor() {
+        guard let panel = window as? NSPanel, !panel.isKeyWindow,
+              owner?.isActive == true else { return }
+        panel.makeKey()
+        panel.invalidateCursorRects(for: self)
     }
 
     override func resetCursorRects() {
