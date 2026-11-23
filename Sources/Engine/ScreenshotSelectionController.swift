@@ -372,7 +372,8 @@ final class ScreenshotSelectionSurfaceView: NSView {
             mosaicOpacity: mosaicOpacity,
             arrowStyle: arrowStyle,
             mosaicStyle: mosaicStyle,
-            fontSize: fontSize
+            fontSize: fontSize,
+            weightIndex: weightIndex
         )
         needsLayout = true
     }
@@ -819,8 +820,8 @@ final class ScreenshotSelectionSurfaceView: NSView {
             switchCaptureMode(.longCapture)
         case 12:
             startLongCapture()
-        case 0:
-            if captureMode == .screenshot { activeTool = nil }
+        case 15:
+            if captureMode == .screenshot { askAI() }
         case 1:
             guard captureMode == .screenshot else { break }
             if activeTool == .rectangle || activeTool == .ellipse {
@@ -863,6 +864,9 @@ final class ScreenshotSelectionSurfaceView: NSView {
         case 511...513:
             widthPreset = control.tag - 511
             strokeScale = [0.9, 1.8, 2.8][widthPreset]
+        case 521...523:
+            // 序号大小：小 / 中 / 大（影响 badgeScales 档位）
+            weightIndex = control.tag - 521
         case 101...107:
             colorIndex = control.tag - 101
             needsDisplay = true
@@ -1301,6 +1305,54 @@ final class ScreenshotSelectionSurfaceView: NSView {
             }
         } else {
             showChip(L10n.tr("editor.translate.failed"))
+        }
+    }
+
+    /// 问AI：选区先 OCR 取文字，再交给已配置的 AI 服务分析，结果复用识别结果面板。
+    private func askAI() {
+        guard let png = croppedBasePNG() else { return }
+        guard AIProviderSettings.isConfigured else {
+            showChip(L10n.tr("automation.ai.notConfigured"), duration: 4)
+            return
+        }
+        showChip(L10n.tr("editor.askAI.working"), duration: 60)
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                // 与剪贴板 OCR 同一条链路：读同一个 markdown 开关（默认开）。
+                let useMarkdown = UserDefaults.standard.object(forKey: "ocrToMarkdown") as? Bool ?? true
+                let result = try await ImageOCRService.shared.recognizeText(from: png, markdown: useMarkdown)
+                let text = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !text.isEmpty else {
+                    self.hideChip()
+                    self.showChip(L10n.tr("editor.ocr.empty"))
+                    return
+                }
+                // 与自动化 aiTransform 同一条长度红线
+                let limited = String(text.prefix(AIProviderSettings.maxContentLength))
+                // 与 ActionExecutor.runAI 同一套后端选择：本地 CLI 或 HTTP 端点
+                let prompt = L10n.tr("editor.askAI.prompt")
+                let answer: String
+                if AIProviderSettings.mode == .local {
+                    answer = try await AICLIBackend(config: AIProviderSettings.cliSnapshot())
+                        .transform(prompt: prompt, content: limited)
+                } else {
+                    answer = try await AIClient(config: AIProviderSettings.snapshot())
+                        .transform(prompt: prompt, content: limited)
+                }
+                self.hideChip()
+                if let sel = self.selection {
+                    self.presentResultPanel(
+                        title: L10n.tr("editor.askAI.result.title"),
+                        text: answer,
+                        selection: sel
+                    )
+                }
+            } catch {
+                self.hideChip()
+                let message = (error as? AIError)?.userMessage ?? L10n.tr("editor.askAI.failed")
+                self.showChip(message, duration: 6)
+            }
         }
     }
 
@@ -2052,9 +2104,9 @@ final class SelectionToolbar: NSVisualEffectView {
         modeLongButton = add(21, .asset("LongCapture"), L10n.tr("capture.mode.long"))
         stack.addArrangedSubview(Self.divider())
 
-        // 顺序对齐 FloGravity 6.3.10：批注 / 序号 / 形状 / 箭头 / 文字 / 画笔 / 更多
+        // 顺序对齐 FloGravity 6.3.10：问AI / 序号 / 形状 / 箭头 / 文字 / 画笔 / 更多
         // | 文字识别 | 撤销 / 重做 / 保存 / 钉图 / 复制 / 关闭 / 完成
-        _ = add(0, .asset("Remark"), L10n.tr("editor.tool.pointer"))
+        _ = add(15, .symbol("sparkles"), L10n.tr("editor.tool.askAI"))
         stack.addArrangedSubview(Self.divider())
         _ = add(7, .asset("Callout"), L10n.tr("editor.tool.stepBadge"))
         shapeButton = add(1, .asset("Shape"), L10n.tr("editor.tool.rectangle"))
@@ -2103,14 +2155,14 @@ final class SelectionToolbar: NSVisualEffectView {
     func update(mode: CaptureMode, tool: ScreenshotAnnotation.Kind?, canUndo: Bool, canRedo: Bool, hasSelection: Bool) {
         let activeTag = Self.tag(for: tool) ?? 0
         for (tag, button) in toolButtons {
-            let isAction = (301...306).contains(tag) || tag == 12 || tag == 20 || tag == 21
+            let isAction = (301...306).contains(tag) || tag == 12 || tag == 15 || tag == 20 || tag == 21
             button.selectedState = tag == activeTag && !isAction
         }
         modeScreenshotButton.selectedState = mode == .screenshot
         modeLongButton.selectedState = mode == .longCapture
 
         // 长截图模式隐藏标注区与撤销/保存/钉图/复制组，换成「开始长截图」
-        let annotationTags = [0, 7, 1, 3, 6, 4, 11, 9, 14]
+        let annotationTags = [15, 7, 1, 3, 6, 4, 11, 9, 14]
         for tag in annotationTags {
             toolButtons[tag]?.isHidden = mode == .longCapture
         }
@@ -2171,6 +2223,7 @@ final class SelectionOptionsBar: NSVisualEffectView {
     private var colorButtons: [Int: ToolbarButton] = [:]
     private var arrowButtons: [Int: ToolbarButton] = [:]
     private var mosaicButtons: [Int: ToolbarButton] = [:]
+    private var badgeSizeButtons: [Int: ToolbarButton] = [:]
     private var opacitySlider: NSSlider?
     private var opacityValueLabel: NSTextField?
     private var sizeButton: PopupSizeButton?
@@ -2240,7 +2293,8 @@ final class SelectionOptionsBar: NSVisualEffectView {
         mosaicOpacity: CGFloat,
         arrowStyle: Int,
         mosaicStyle: Int,
-        fontSize: CGFloat
+        fontSize: CGFloat,
+        weightIndex: Int
     ) {
         guard let tool else {
             configuredTool = nil
@@ -2248,12 +2302,13 @@ final class SelectionOptionsBar: NSVisualEffectView {
         }
         let activeOpacity = tool == .mosaic ? mosaicOpacity : opacity
         if configuredTool != tool {
-            rebuild(for: tool, shapeKind: shapeKind, widthPreset: widthPreset, strokeScale: strokeScale, opacity: activeOpacity, arrowStyle: arrowStyle, mosaicStyle: mosaicStyle, fontSize: fontSize)
+            rebuild(for: tool, shapeKind: shapeKind, widthPreset: widthPreset, strokeScale: strokeScale, opacity: activeOpacity, arrowStyle: arrowStyle, mosaicStyle: mosaicStyle, fontSize: fontSize, weightIndex: weightIndex)
             configuredTool = tool
         }
         shapeButton?.titleText = PopupShapeButton.shapeTitle(shapeKind)
         shapeButton?.currentKind = shapeKind
         for (index, button) in widthButtons { button.selectedState = index == widthPreset }
+        for (index, button) in badgeSizeButtons { button.selectedState = index == weightIndex }
         opacitySlider?.doubleValue = Double(activeOpacity)
         opacityValueLabel?.stringValue = "\(Int(round(activeOpacity * 100))) %"
         for (index, button) in colorButtons { button.selectedState = index == colorIndex }
@@ -2280,7 +2335,8 @@ final class SelectionOptionsBar: NSVisualEffectView {
         opacity: CGFloat,
         arrowStyle: Int,
         mosaicStyle: Int,
-        fontSize: CGFloat
+        fontSize: CGFloat,
+        weightIndex: Int
     ) {
         stack.arrangedSubviews.forEach { view in
             stack.removeArrangedSubview(view)
@@ -2289,6 +2345,7 @@ final class SelectionOptionsBar: NSVisualEffectView {
         colorButtons.removeAll()
         arrowButtons.removeAll()
         mosaicButtons.removeAll()
+        badgeSizeButtons.removeAll()
         widthButtons.removeAll()
         boldButtons.removeAll()
         alignButtons.removeAll()
@@ -2361,6 +2418,9 @@ final class SelectionOptionsBar: NSVisualEffectView {
             addDivider()
             addColors()
         case .stepBadge:
+            // 序号：大小（小/中/大）| 色板
+            addBadgeSizeControl(preset: weightIndex)
+            addDivider()
             addColors()
         }
     }
@@ -2422,6 +2482,24 @@ final class SelectionOptionsBar: NSVisualEffectView {
         let preview = Self.dot(size: 16, color: ScreenshotSelectionSurfaceView.paletteColor(0))
         previewDot = preview
         stack.addArrangedSubview(preview)
+    }
+
+    /// 序号大小：对齐粗细面板的「小/中/大」胶囊按钮（tag 521-523 → weightIndex）。
+    private func addBadgeSizeControl(preset: Int) {
+        let titles = [
+            L10n.tr("editor.size.small"),
+            L10n.tr("editor.size.medium"),
+            L10n.tr("editor.size.large"),
+        ]
+        for (index, title) in titles.enumerated() {
+            let textWidth = (title as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: 11.5, weight: .medium)]).width
+            let button = ToolbarButton(look: .chip(title), tooltip: "", target: target, action: action)
+            button.tag = 521 + index
+            button.size = NSSize(width: ceil(textWidth) + 16, height: 26)
+            button.selectedState = index == preset
+            badgeSizeButtons[index] = button
+            stack.addArrangedSubview(button)
+        }
     }
 
     private func addHighlightTextField() {

@@ -284,6 +284,11 @@
 "editor.translate.working" = "Перевод…";
 "editor.translate.failed" = "Не удалось перевести";
 "editor.translate.result.title" = "Результат перевода";
+"editor.tool.askAI" = "Спросить ИИ";
+"editor.askAI.working" = "ИИ анализирует…";
+"editor.askAI.result.title" = "Спросить ИИ";
+"editor.askAI.failed" = "Ошибка запроса к ИИ";
+"editor.askAI.prompt" = "Проанализируй это содержание: обобщи ключевые моменты, выдели важную информацию и укажи на ошибки или риски, если они есть. Выведи результат анализа напрямую.";
 "editor.tool.pin" = "Закрепить на экране";
 "editor.copy" = "Копировать";
 "editor.highlight.placeholder" = "До 16 символов";

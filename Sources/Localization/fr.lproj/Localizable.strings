@@ -139,6 +139,11 @@
 "editor.translate.working" = "Traduction en cours…";
 "editor.translate.failed" = "Échec de la traduction";
 "editor.translate.result.title" = "Résultat de la traduction";
+"editor.tool.askAI" = "Demander à l'IA";
+"editor.askAI.working" = "L'IA analyse…";
+"editor.askAI.result.title" = "Demander à l'IA";
+"editor.askAI.failed" = "Échec de la requête IA";
+"editor.askAI.prompt" = "Analyse ce contenu : résume les points clés, souligne les informations importantes et signale toute erreur ou tout risque. Donne directement le résultat de l'analyse.";
 "editor.tool.pin" = "Épingler à l'écran";
 "editor.copy" = "Copier";
 "editor.highlight.placeholder" = "16 caractères max";

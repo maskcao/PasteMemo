@@ -147,6 +147,11 @@
 "editor.translate.working" = "翻訳中…";
 "editor.translate.failed" = "翻訳失敗";
 "editor.translate.result.title" = "翻訳結果";
+"editor.tool.askAI" = "AIに質問";
+"editor.askAI.working" = "AIが分析中…";
+"editor.askAI.result.title" = "AIに質問";
+"editor.askAI.failed" = "AIリクエストに失敗しました";
+"editor.askAI.prompt" = "この内容を分析してください。要点をまとめ、重要な情報を指摘し、誤りやリスクがあれば指摘してください。分析結果のみを出力してください。";
 "editor.tool.pin" = "画面にピン留め";
 "editor.copy" = "コピー";
 "editor.highlight.placeholder" = "16文字まで";

@@ -311,6 +311,11 @@
 "editor.translate.working" = "Translating…";
 "editor.translate.failed" = "Translation failed";
 "editor.translate.result.title" = "Translation Result";
+"editor.tool.askAI" = "Ask AI";
+"editor.askAI.working" = "AI is thinking…";
+"editor.askAI.result.title" = "Ask AI";
+"editor.askAI.failed" = "AI request failed";
+"editor.askAI.prompt" = "Analyze this content: summarize the key points and highlight the important information; point out any errors or risks as well. Output the analysis directly.";
 "editor.tool.pin" = "Pin to screen";
 "editor.copy" = "Copy";
 "editor.highlight.placeholder" = "Up to 16 characters";

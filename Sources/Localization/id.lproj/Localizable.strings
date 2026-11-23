@@ -284,6 +284,11 @@
 "editor.translate.working" = "Menerjemahkan…";
 "editor.translate.failed" = "Gagal menerjemahkan";
 "editor.translate.result.title" = "Hasil terjemahan";
+"editor.tool.askAI" = "Tanya AI";
+"editor.askAI.working" = "AI sedang menganalisis…";
+"editor.askAI.result.title" = "Tanya AI";
+"editor.askAI.failed" = "Permintaan AI gagal";
+"editor.askAI.prompt" = "Analisis konten ini: rangkum poin-poin penting, soroti informasi utama, dan tunjukkan kesalahan atau risiko jika ada. Tampilkan hasil analisisnya secara langsung.";
 "editor.tool.pin" = "Sematkan ke layar";
 "editor.copy" = "Salin";
 "editor.highlight.placeholder" = "Maks. 16 karakter";

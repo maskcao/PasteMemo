@@ -139,6 +139,11 @@
 "editor.translate.working" = "Wird übersetzt…";
 "editor.translate.failed" = "Übersetzung fehlgeschlagen";
 "editor.translate.result.title" = "Übersetzungsergebnis";
+"editor.tool.askAI" = "KI fragen";
+"editor.askAI.working" = "KI analysiert…";
+"editor.askAI.result.title" = "KI fragen";
+"editor.askAI.failed" = "KI-Anfrage fehlgeschlagen";
+"editor.askAI.prompt" = "Analysiere diesen Inhalt: fasse die Kernpunkte zusammen, hebe die wichtigen Informationen hervor und weise auf Fehler oder Risiken hin. Gib das Analyseergebnis direkt aus.";
 "editor.tool.pin" = "Am Bildschirm anheften";
 "editor.copy" = "Kopieren";
 "editor.highlight.placeholder" = "Max. 16 Zeichen";

@@ -139,6 +139,11 @@
 "editor.translate.working" = "번역 중…";
 "editor.translate.failed" = "번역 실패";
 "editor.translate.result.title" = "번역 결과";
+"editor.tool.askAI" = "AI에게 질문";
+"editor.askAI.working" = "AI 분석 중…";
+"editor.askAI.result.title" = "AI에게 질문";
+"editor.askAI.failed" = "AI 요청 실패";
+"editor.askAI.prompt" = "이 내용을 분석해 주세요. 요점을 정리하고 핵심 정보를 짚어주고, 오류나 위험이 있다면 함께 지적해 주세요. 분석 결과만 출력해 주세요.";
 "editor.tool.pin" = "화면에 고정";
 "editor.copy" = "복사";
 "editor.highlight.placeholder" = "최대 16자";

@@ -70,7 +70,8 @@ enum AnnotationStyle {
 
     static let weights: [CGFloat] = [1.0, 1.8, 3.0]
     static let textScales: [CGFloat] = [0.75, 1.0, 1.5]
-    static let badgeScales: [CGFloat] = [0.8, 1.0, 1.3]
+    /// 序号大小三档（小/中/大）：档位差拉大，肉眼一眼可辨
+    static let badgeScales: [CGFloat] = [0.7, 1.0, 1.4]
 
     // 笔画/字号按图宽等比， retina 2x 截图上不至于细成一发丝
     static func baseStroke(imageWidth: CGFloat) -> CGFloat { max(3, imageWidth / 300) }

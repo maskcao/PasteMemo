@@ -283,6 +283,11 @@
 "editor.translate.working" = "翻譯中…";
 "editor.translate.failed" = "翻譯失敗";
 "editor.translate.result.title" = "翻譯結果";
+"editor.tool.askAI" = "問AI";
+"editor.askAI.working" = "AI 分析中…";
+"editor.askAI.result.title" = "問AI";
+"editor.askAI.failed" = "AI 請求失敗";
+"editor.askAI.prompt" = "請分析這段內容：總結要點，指出關鍵資訊；如有錯誤或風險請一併指出。直接輸出分析結果。";
 "editor.tool.pin" = "釘在螢幕";
 "editor.copy" = "複製";
 "editor.highlight.placeholder" = "最多輸入 16 個字元";
