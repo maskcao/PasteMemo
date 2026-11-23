@@ -1282,3 +1282,9 @@
 "editor.align.center" = "По центру";
 "editor.align.right" = "По правому краю";
 "editor.ocr.result.title" = "Результат распознавания";
+
+// 截图取色读数（坐标 + 色值）
+"screenshot.color.coord" = "Координаты: %d, %d";
+"screenshot.color.copy" = "Нажмите ⌘C, чтобы скопировать цвет";
+"screenshot.color.toggle" = "Нажмите Shift для переключения RGB/HEX";
+"screenshot.color.copied" = "Значение цвета скопировано";

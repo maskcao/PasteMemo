@@ -315,13 +315,26 @@ final class ScreenshotSelectionSurfaceView: NSView {
 
     /// 放大镜为正方形预览窗：边长更大、倍数更低，方便看清周边
     private let magnifierSide: CGFloat = 132
-    private let magnifierZoom: CGFloat = 3
     private let magnifierCornerRadius: CGFloat = 8
+    /// 放大镜里一个格子的边长（点）。镜内「一格 = 冻结帧里的一个像素」，
+    /// 十字准星正好压在光标所在的那一格上——放大所见与取到的颜色严格一致。
+    private let magnifierCellSize: CGFloat = 3
+    /// 放大镜横向的格子数（= 边长 / 格子边长）
+    private var magnifierCells: Int { max(8, Int(magnifierSide / magnifierCellSize)) }
     /// 十字准星用亮黄色（应用图标的黄色调）
     private static let magnifierCrosshairColor = NSColor(
         red: 1.0, green: 0.84, blue: 0.04, alpha: 1
     )
     private let handleSize: CGFloat = 9
+
+    // MARK: - 取色（坐标 + 色值读数）
+
+    /// 放大镜下方的读数格式（HEX / RGB），按 Shift 切换
+    private var colorFormat: ColorFormat = .hex
+    /// Shift 当前是否按下：只在「按下瞬间」切换格式，避免与 Shift 正方形框选冲突
+    private var shiftPressed = false
+    /// 冻结帧取色器：视图坐标 → 像素坐标 + sRGB 分量
+    private lazy var sampler = ScreenshotPixelSampler(image: image, pixelScale: pixelScale)
 
     /// FloGravity 色板：红 / 绿 / 蓝 / 紫 / 白 / 黑 / 跟随主题 / 自定义
     /// 浮引 7 色命名色板（墨色/红/橙/黄/绿/蓝/紫）
@@ -1181,6 +1194,25 @@ final class ScreenshotSelectionSurfaceView: NSView {
 
     // MARK: - Keyboard
 
+    /// Shift 切换取色读数的格式（HEX ↔ RGB）。
+    /// 只在「按下瞬间」切换一次：按住 Shift 拖拽是「正方形框选」，
+    /// 松开时的 flagsChanged 不再翻转格式；正在框选时也不切换。
+    override func flagsChanged(with event: NSEvent) {
+        let nowDown = event.modifierFlags.contains(.shift)
+        if nowDown && !shiftPressed {
+            toggleColorFormatIfPicking()
+        }
+        shiftPressed = nowDown
+        super.flagsChanged(with: event)
+    }
+
+    /// 悬停取色时按 Shift 在 HEX / RGB 之间切换
+    private func toggleColorFormatIfPicking() {
+        guard magnifierPoint != nil, selection == nil, dragMode == .none else { return }
+        colorFormat = (colorFormat == .hex) ? .rgb : .hex
+        needsDisplay = true
+    }
+
     override func keyDown(with event: NSEvent) {
         if event.modifierFlags.contains(.command) {
             switch event.charactersIgnoringModifiers {
@@ -1191,7 +1223,12 @@ final class ScreenshotSelectionSurfaceView: NSView {
                 saveToFile()
                 return
             case "c":
-                copySelection()
+                // 放大镜可见 = 正在取色，⌘C 复制色值；否则照旧复制选区图片
+                if let point = magnifierPoint, let value = currentColorText(at: point) {
+                    copyColorValue(value)
+                } else {
+                    copySelection()
+                }
                 return
             default:
                 break
@@ -1270,6 +1307,14 @@ final class ScreenshotSelectionSurfaceView: NSView {
         pasteboard.clearContents()
         pasteboard.setData(png, forType: .png)
         showChip(L10n.tr("action.copied"))
+    }
+
+    /// 复制光标处的色值（HEX / RGB，随 Shift 切换）
+    private func copyColorValue(_ value: String) {
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(value, forType: .string)
+        showChip("\(L10n.tr("screenshot.color.copied")) \(value)", near: magnifierPoint)
     }
 
     /// 选区原始像素（不含标注）——OCR 用干净底图。
@@ -1506,7 +1551,7 @@ final class ScreenshotSelectionSurfaceView: NSView {
     }
 
     /// 选区内淡入淡出的结果提示（复制/OCR）。ToastCenter 在 screenSaver 级浮层下面，面板开着时看不到。
-    private func showChip(_ text: String, duration: TimeInterval = 1.4) {
+    private func showChip(_ text: String, duration: TimeInterval = 1.4, near anchor: CGPoint? = nil) {
         chipWorkItem?.cancel()
         chipView?.removeFromSuperview()
         let label = NSTextField(labelWithString: text)
@@ -1521,10 +1566,17 @@ final class ScreenshotSelectionSurfaceView: NSView {
         container.layer?.cornerRadius = height / 2
         label.frame = NSRect(x: 12, y: (height - textSize.height) / 2, width: textSize.width, height: textSize.height)
         container.addSubview(label)
-        let centerX = selection?.midX ?? bounds.midX
-        var y = (selection?.minY ?? bounds.midY) - 12 - height
-        if y < 8 {
-            y = (selection?.maxY ?? bounds.midY) + 12
+        let centerX = anchor?.x ?? selection?.midX ?? bounds.midX
+        var y: CGFloat
+        if let anchor {
+            // 有锚点（取色复制）就贴在锚点上方，避免和放大镜抢位置
+            y = anchor.y - 12 - height
+            if y < 8 { y = anchor.y + 12 }
+        } else {
+            y = (selection?.minY ?? bounds.midY) - 12 - height
+            if y < 8 {
+                y = (selection?.maxY ?? bounds.midY) + 12
+            }
         }
         container.frame = NSRect(x: centerX - width / 2, y: y, width: width, height: height)
         addSubview(container)
@@ -2086,7 +2138,18 @@ final class ScreenshotSelectionSurfaceView: NSView {
     // MARK: - Magnifier
 
     private func drawMagnifier(at point: CGPoint) {
-        guard let ctx = NSGraphicsContext.current else { return }
+        guard let ctx = NSGraphicsContext.current,
+              let cg = image.cgImage(forProposedRect: nil, context: nil, hints: nil)
+        else { return }
+        // 镜内一格 = 冻结帧里的一个像素：取样区是以光标像素为中心的一格方阵，
+        // 贴到屏幕边缘时整体平移（不缩放），保证每格始终是完整像素。
+        let cells = min(magnifierCells, min(cg.width, cg.height))
+        let cursorPx = sampler.pixel(atViewPoint: point)
+        let originX = max(0, min(Int(cursorPx.x) - cells / 2, cg.width - cells))
+        let originY = max(0, min(Int(cursorPx.y) - cells / 2, cg.height - cells))
+        guard let cropped = cg.cropping(to: CGRect(x: originX, y: originY, width: cells, height: cells))
+        else { return }
+
         // 光标右下偏移，贴边自动翻到左上
         var center = CGPoint(x: point.x + magnifierSide / 2 + 20, y: point.y + magnifierSide / 2 + 20)
         if center.x + magnifierSide / 2 > bounds.width || center.y + magnifierSide / 2 > bounds.height {
@@ -2097,33 +2160,42 @@ final class ScreenshotSelectionSurfaceView: NSView {
             width: magnifierSide, height: magnifierSide
         ).clamped(to: bounds.size)
 
+        ctx.cgContext.saveGState()
         let clip = NSBezierPath(roundedRect: lens, xRadius: magnifierCornerRadius, yRadius: magnifierCornerRadius)
         clip.addClip()
         // 从冻结帧取光标邻域像素，nearest 放大出马赛克感
-        let samplePt = magnifierSide / magnifierZoom
-        let samplePixel = CGRect(
-            x: (point.x - samplePt / 2) * pixelScale,
-            y: (point.y - samplePt / 2) * pixelScale,
-            width: samplePt * pixelScale,
-            height: samplePt * pixelScale
-        ).integral
-        if let cg = image.cgImage(forProposedRect: nil, context: nil, hints: nil),
-           samplePixel.width >= 2, samplePixel.height >= 2,
-           let cropped = cg.cropping(to: samplePixel.intersection(CGRect(x: 0, y: 0, width: CGFloat(cg.width), height: CGFloat(cg.height)))) {
-            let sample = NSImage(cgImage: cropped, size: CGSize(width: samplePt, height: samplePt))
-            ctx.imageInterpolation = .none
-            sample.draw(in: lens)
-            ctx.imageInterpolation = .default
+        let sample = NSImage(cgImage: cropped, size: NSSize(width: magnifierSide, height: magnifierSide))
+        ctx.imageInterpolation = .none
+        sample.draw(in: lens)
+        ctx.imageInterpolation = .default
+
+        // 像素网格：一格一个屏幕像素，方便数格子定位
+        let cell = lens.width / CGFloat(cells)
+        let grid = NSBezierPath()
+        for index in 1..<cells {
+            let x = lens.minX + CGFloat(index) * cell
+            grid.move(to: CGPoint(x: x, y: lens.minY))
+            grid.line(to: CGPoint(x: x, y: lens.maxY))
+            let y = lens.minY + CGFloat(index) * cell
+            grid.move(to: CGPoint(x: lens.minX, y: y))
+            grid.line(to: CGPoint(x: lens.maxX, y: y))
         }
+        NSColor.white.withAlphaComponent(0.22).setStroke()
+        grid.lineWidth = 0.5
+        grid.stroke()
         clip.setClip()
 
-        // 十字准星（亮黄色 + 深色衬底，浅色画面上也看得清）
+        // 十字准星压在光标所在的那一格上（亮黄色 + 深色衬底，浅色画面上也看得清）
+        let cursorCell = CGPoint(
+            x: lens.minX + (CGFloat(Int(cursorPx.x) - originX) + 0.5) * cell,
+            y: lens.minY + (CGFloat(Int(cursorPx.y) - originY) + 0.5) * cell
+        )
         let cross = magnifierSide * 0.14
         let crossPath = NSBezierPath()
-        crossPath.move(to: CGPoint(x: center.x - cross, y: center.y))
-        crossPath.line(to: CGPoint(x: center.x + cross, y: center.y))
-        crossPath.move(to: CGPoint(x: center.x, y: center.y - cross))
-        crossPath.line(to: CGPoint(x: center.x, y: center.y + cross))
+        crossPath.move(to: CGPoint(x: cursorCell.x - cross, y: cursorCell.y))
+        crossPath.line(to: CGPoint(x: cursorCell.x + cross, y: cursorCell.y))
+        crossPath.move(to: CGPoint(x: cursorCell.x, y: cursorCell.y - cross))
+        crossPath.line(to: CGPoint(x: cursorCell.x, y: cursorCell.y + cross))
         NSColor.black.withAlphaComponent(0.35).setStroke()
         crossPath.lineWidth = 3.5
         crossPath.stroke()
@@ -2146,6 +2218,111 @@ final class ScreenshotSelectionSurfaceView: NSView {
         )
         inner.lineWidth = 1
         inner.stroke()
+        ctx.cgContext.restoreGState()
+
+        drawColorReadout(at: point, lens: lens)
+    }
+
+    // MARK: - 取色读数（坐标 + 色值）
+
+    /// 光标处的色值文本（HEX 或 RGB，取决于 Shift 切换）
+    private func currentColorText(at point: CGPoint) -> String? {
+        guard let sample = sampler.sample(atViewPoint: point) else { return nil }
+        return sample.color.formatted(colorFormat)
+    }
+
+    /// 放大镜下方的读数面板：坐标 / 色值 / 操作提示（对齐截图里的取色器样式）
+    private func drawColorReadout(at point: CGPoint, lens: NSRect) {
+        guard let sample = sampler.sample(atViewPoint: point) else { return }
+
+        let coordText = String(format: L10n.tr("screenshot.color.coord"), sample.px, sample.py)
+        let valueText = sample.color.formatted(colorFormat)
+        let copyHint = L10n.tr("screenshot.color.copy")
+        let toggleHint = L10n.tr("screenshot.color.toggle")
+
+        let coordAttrs: [NSAttributedString.Key: Any] = [
+            .font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .medium),
+            .foregroundColor: NSColor.white,
+        ]
+        let valueAttrs: [NSAttributedString.Key: Any] = [
+            .font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .semibold),
+            .foregroundColor: NSColor.white,
+        ]
+        let hintAttrs: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: 10, weight: .regular),
+            .foregroundColor: NSColor.white.withAlphaComponent(0.62),
+        ]
+
+        let coordSize = (coordText as NSString).size(withAttributes: coordAttrs)
+        let valueSize = (valueText as NSString).size(withAttributes: valueAttrs)
+        let hintSize = (copyHint as NSString).size(withAttributes: hintAttrs)
+        let toggleSize = (toggleHint as NSString).size(withAttributes: hintAttrs)
+
+        let padding: CGFloat = 9
+        let swatch: CGFloat = 12
+        let swatchGap: CGFloat = 6
+        let valueRowHeight = max(swatch, valueSize.height)
+        let contentWidth = max(
+            coordSize.width,
+            max(swatch + swatchGap + valueSize.width, max(hintSize.width, toggleSize.width))
+        )
+        let panelWidth = contentWidth + padding * 2
+        let panelHeight = padding * 2
+            + coordSize.height + 3
+            + valueRowHeight + 3
+            + hintSize.height + 2
+            + toggleSize.height
+
+        // 默认挂在放大镜下方；下方放不下就翻到上方
+        var origin = CGPoint(x: lens.midX - panelWidth / 2, y: lens.maxY + 8)
+        if origin.y + panelHeight > bounds.height - 4 {
+            origin.y = lens.minY - 8 - panelHeight
+        }
+        origin.x = max(4, min(origin.x, bounds.width - panelWidth - 4))
+        origin.y = max(4, min(origin.y, bounds.height - panelHeight - 4))
+        let panel = NSRect(origin: origin, size: NSSize(width: panelWidth, height: panelHeight))
+
+        let background = NSBezierPath(roundedRect: panel, xRadius: 6, yRadius: 6)
+        NSColor.black.withAlphaComponent(0.72).setFill()
+        background.fill()
+        NSColor.white.withAlphaComponent(0.16).setStroke()
+        background.lineWidth = 1
+        background.stroke()
+
+        var y = panel.minY + padding
+        (coordText as NSString).draw(at: CGPoint(x: panel.minX + padding, y: y), withAttributes: coordAttrs)
+        y += coordSize.height + 3
+
+        // 色块 + 色值
+        let swatchRect = NSRect(
+            x: panel.minX + padding,
+            y: y + (valueRowHeight - swatch) / 2,
+            width: swatch,
+            height: swatch
+        )
+        let swatchPath = NSBezierPath(roundedRect: swatchRect, xRadius: 3, yRadius: 3)
+        NSColor(
+            srgbRed: CGFloat(sample.r) / 255,
+            green: CGFloat(sample.g) / 255,
+            blue: CGFloat(sample.b) / 255,
+            alpha: 1
+        ).setFill()
+        swatchPath.fill()
+        NSColor.white.withAlphaComponent(0.5).setStroke()
+        swatchPath.lineWidth = 1
+        swatchPath.stroke()
+        (valueText as NSString).draw(
+            at: CGPoint(
+                x: swatchRect.maxX + swatchGap,
+                y: y + (valueRowHeight - valueSize.height) / 2
+            ),
+            withAttributes: valueAttrs
+        )
+        y += valueRowHeight + 3
+
+        (copyHint as NSString).draw(at: CGPoint(x: panel.minX + padding, y: y), withAttributes: hintAttrs)
+        y += hintSize.height + 2
+        (toggleHint as NSString).draw(at: CGPoint(x: panel.minX + padding, y: y), withAttributes: hintAttrs)
     }
 }
 

@@ -1258,3 +1258,9 @@
 "editor.align.center" = "居中对齐";
 "editor.align.right" = "右对齐";
 "editor.ocr.result.title" = "识别结果";
+
+// 截图取色读数（坐标 + 色值）
+"screenshot.color.coord" = "坐标: %d, %d";
+"screenshot.color.copy" = "按 ⌘C 复制颜色值";
+"screenshot.color.toggle" = "按 Shift 切换 RGB/HEX";
+"screenshot.color.copied" = "已复制颜色值";

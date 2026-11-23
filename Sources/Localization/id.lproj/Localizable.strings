@@ -1282,3 +1282,9 @@
 "editor.align.center" = "Rata Tengah";
 "editor.align.right" = "Rata Kanan";
 "editor.ocr.result.title" = "Hasil Pengenalan";
+
+// 截图取色读数（坐标 + 色值）
+"screenshot.color.coord" = "Koordinat: %d, %d";
+"screenshot.color.copy" = "Tekan ⌘C untuk menyalin warna";
+"screenshot.color.toggle" = "Tekan Shift untuk mengganti RGB/HEX";
+"screenshot.color.copied" = "Nilai warna disalin";

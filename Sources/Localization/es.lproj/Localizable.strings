@@ -1312,3 +1312,9 @@
 "editor.align.center" = "Centrar";
 "editor.align.right" = "Alinear a la derecha";
 "editor.ocr.result.title" = "Resultado de reconocimiento";
+
+// 截图取色读数（坐标 + 色值）
+"screenshot.color.coord" = "Coordenadas: %d, %d";
+"screenshot.color.copy" = "Pulsa ⌘C para copiar el color";
+"screenshot.color.toggle" = "Pulsa Mayús para alternar entre RGB y HEX";
+"screenshot.color.copied" = "Valor de color copiado";

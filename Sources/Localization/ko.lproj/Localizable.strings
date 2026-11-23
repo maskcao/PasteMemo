@@ -1310,3 +1310,9 @@
 "editor.align.center" = "가운데 정렬";
 "editor.align.right" = "오른쪽 정렬";
 "editor.ocr.result.title" = "인식 결과";
+
+// 截图取色读数（坐标 + 色值）
+"screenshot.color.coord" = "좌표: %d, %d";
+"screenshot.color.copy" = "⌘C 로 색상 값 복사";
+"screenshot.color.toggle" = "Shift 로 RGB/HEX 전환";
+"screenshot.color.copied" = "색상 값을 복사했습니다";

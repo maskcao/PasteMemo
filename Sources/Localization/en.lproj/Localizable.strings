@@ -1258,3 +1258,9 @@
 "editor.align.center" = "Align Center";
 "editor.align.right" = "Align Right";
 "editor.ocr.result.title" = "Recognition Result";
+
+// 截图取色读数（坐标 + 色值）
+"screenshot.color.coord" = "Coords: %d, %d";
+"screenshot.color.copy" = "Press ⌘C to copy the color";
+"screenshot.color.toggle" = "Press Shift to switch RGB/HEX";
+"screenshot.color.copied" = "Color value copied";

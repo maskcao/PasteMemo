@@ -1272,3 +1272,9 @@
 "editor.align.center" = "Allinea al centro";
 "editor.align.right" = "Allinea a destra";
 "editor.ocr.result.title" = "Risultato del riconoscimento";
+
+// 截图取色读数（坐标 + 色值）
+"screenshot.color.coord" = "Coordinate: %d, %d";
+"screenshot.color.copy" = "Premi ⌘C per copiare il colore";
+"screenshot.color.toggle" = "Premi Maiusc per alternare tra RGB e HEX";
+"screenshot.color.copied" = "Valore del colore copiato";

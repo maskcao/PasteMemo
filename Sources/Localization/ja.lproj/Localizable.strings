@@ -1308,3 +1308,9 @@
 "editor.align.center" = "中央揃え";
 "editor.align.right" = "右揃え";
 "editor.ocr.result.title" = "認識結果";
+
+// 截图取色读数（坐标 + 色值）
+"screenshot.color.coord" = "座標: %d, %d";
+"screenshot.color.copy" = "⌘C で色をコピー";
+"screenshot.color.toggle" = "Shift で RGB/HEX を切り替え";
+"screenshot.color.copied" = "色の値をコピーしました";
