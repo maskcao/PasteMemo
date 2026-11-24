@@ -235,6 +235,9 @@ struct NativeTextView: NSViewRepresentable {
         // 解不出来、或者解出来是一整段没有任何字体能显示的码点时返回 nil，
         // 调用方保留已经铺好的纯文本渲染。
         guard let raw, isRenderable(raw, plainText: plainText) else { return nil }
+        // The plain fallback must never be keyed as if it were the decoded rich text:
+        // on the next width change the cache would resurrect the corrupt rendering.
+        RichTextCache.shared.markRejected(data: data)
         let adapted = adaptColorsForAppearance(raw, isDark: isDark)
         return scaleAttachmentsToFit(adapted, maxWidth: maxImageWidth)
     }
@@ -252,7 +255,7 @@ struct NativeTextView: NSViewRepresentable {
     /// 造出长问号串；原文没有对应的连续问号时，这样的结果直接否决。
     nonisolated private static let lossyRunFloor = 8
     nonisolated private static let lossyRunTolerance = 2
-    nonisolated private static let lossyScanLimit = 50_000
+    nonisolated private static let lossyScanLimit = 200_000
 
     /// 解码结果是否值得拿来替换纯文本渲染。
     ///
@@ -272,8 +275,6 @@ struct NativeTextView: NSViewRepresentable {
         var visible = 0
         var unrenderable = 0
         var lossy = 0
-        var currentLossyRun = 0
-        var maxLossyRun = 0
         for scalar in attributed.string.unicodeScalars {
             // 空白、控制字符、图片占位符不参与判断
             if scalar.value < 0x20 || scalar.value == 0xFFFC || scalar.properties.isWhitespace { continue }
@@ -288,21 +289,18 @@ struct NativeTextView: NSViewRepresentable {
             if scalar.value == 0xFFFD {
                 unrenderable += 1
                 lossy += 1
-                currentLossyRun += 1
-                maxLossyRun = max(maxLossyRun, currentLossyRun)
             } else if scalar.value == 0x3F {
                 lossy += 1
-                currentLossyRun += 1
-                maxLossyRun = max(maxLossyRun, currentLossyRun)
-            } else {
-                currentLossyRun = 0
             }
-            if visible >= min(renderabilityScanLimit, lossyScanLimit) { break }
+            if visible >= renderabilityScanLimit { break }
         }
         guard visible > 0 else { return true }
         if unrenderable * 2 >= visible { return false }
         if let plainText,
-           hasUnexplainedLossyRun(maxLossyRun, plainText: plainText) {
+           // Hard gate: a long unexplained "?" run is always corruption, even when
+            // normal text dilutes it below the aggregate ratio.
+           maxLossyRun(in: attributed.string) >= lossyRunFloor
+                && maxLossyRun(in: attributed.string) > maxLossyRun(in: plainText) + lossyRunTolerance {
             return false
         }
         if let plainText,
@@ -312,29 +310,24 @@ struct NativeTextView: NSViewRepresentable {
         return true
     }
 
-    /// 富文本解码后出现长串 "?" / U+FFFD，而原文没有相近长度的问号串时，
-    /// 认定这些字符是解码丢字产生的，而不是用户复制的内容本身。
-    nonisolated private static func hasUnexplainedLossyRun(_ decodedRun: Int, plainText: String) -> Bool {
-        guard decodedRun >= lossyRunFloor else { return false }
-        return decodedRun > maxLossyRun(in: plainText) + lossyRunTolerance
-    }
-
-    private typealias LossyRun = (maxRun: Int, currentRun: Int)
-
+    /// Longest run of "?" / U+FFFD. A rich-text decoder should never invent such a
+    /// run from ordinary copied text; if the original has no comparable run, the
+    /// decoded payload lost characters.
     nonisolated private static func maxLossyRun(in text: String) -> Int {
-        var result: LossyRun = (0, 0)
+        var maxRun = 0
+        var currentRun = 0
         var seen = 0
         for scalar in text.unicodeScalars {
             seen += 1
             if scalar.value == 0x3F || scalar.value == 0xFFFD {
-                result.currentRun += 1
-                result.maxRun = max(result.maxRun, result.currentRun)
+                currentRun += 1
+                maxRun = max(maxRun, currentRun)
             } else {
-                result.currentRun = 0
+                currentRun = 0
             }
-            if seen >= plainScanLimit { break }
+            if seen >= lossyScanLimit { break }
         }
-        return result.maxRun
+        return maxRun
     }
 
     /// 丢字符判定的对比端：解码结果的 "?" 占比要有绝对数量兜底（防 "What?" 这类
@@ -553,8 +546,11 @@ final class RichTextCache {
     private var cache: [Key: NSAttributedString] = [:]
     private var order: [Key] = []
     private let capacity = 20
+    private var rejectedDataHashes: Set<Int> = []
+    private let rejectedCapacity = 100
 
     func get(itemID: String, data: Data, width: CGFloat) -> NSAttributedString? {
+        guard !rejectedDataHashes.contains(data.hashValue) else { return nil }
         let key = Key(itemID: itemID, dataHash: data.hashValue, width: Int(width))
         guard let value = cache[key] else { return nil }
         // Mark as most recently used.
@@ -563,6 +559,15 @@ final class RichTextCache {
             order.append(key)
         }
         return value
+    }
+
+    /// Remember data whose rich-text decode failed, so the plain-text fallback is not
+    /// accidentally cached later under the same `(itemID, data, width)` key.
+    func markRejected(data: Data) {
+        rejectedDataHashes.insert(data.hashValue)
+        if rejectedDataHashes.count > rejectedCapacity {
+            rejectedDataHashes.removeFirst()
+        }
     }
 
     func set(itemID: String, data: Data, width: CGFloat, value: NSAttributedString) {
