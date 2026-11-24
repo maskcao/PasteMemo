@@ -189,6 +189,8 @@
 "settings.preferences" = "Preferenze";
 "settings.quickPanel" = "Incolla Rapido";
 "settings.previewRecognition" = "Anteprima e riconoscimento";
+"settings.screenshot" = "Istantanea";
+"settings.screenshot.delay" = "Ripresa con ritardo";
 "settings.showLinkURL" = "Mostra URL invece del titolo per i link";
 "settings.webPreview" = "Anteprima web";
 "settings.imageLinkPreview" = "Anteprima link immagine";

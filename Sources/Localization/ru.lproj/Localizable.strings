@@ -189,6 +189,8 @@
 "settings.preferences" = "Настройки";
 "settings.quickPanel" = "Быстрая вставка";
 "settings.previewRecognition" = "Предпросмотр и распознавание";
+"settings.screenshot" = "Снимок экрана";
+"settings.screenshot.delay" = "Задержка съёмки";
 "settings.showLinkURL" = "Показывать URL вместо заголовка для ссылок";
 "settings.webPreview" = "Веб-предпросмотр";
 "settings.imageLinkPreview" = "Предпросмотр ссылок на изображения";

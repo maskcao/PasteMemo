@@ -104,6 +104,7 @@ struct SettingsDetail: View {
         case .appearance: AppearancePane()
         case .quickPanel: QuickPanelPane()
         case .preview: PreviewPane()
+        case .screenshot: ScreenshotSettingsPane()
         case .shortcuts: ShortcutsTab()
         case .privacy: PrivacyTab()
         case .aiAgents: AIAgentIntegrationView()
@@ -120,6 +121,7 @@ struct SettingsDetail: View {
 
 enum SettingsCategory: String, CaseIterable, Identifiable, Hashable {
     case general, appearance, quickPanel, preview
+    case screenshot
     case shortcuts, privacy, aiAgents, aiService, automation, data
     case sponsor, about
 
@@ -127,7 +129,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable, Hashable {
 
     /// 功能设置：基础(通用/外观) → 快捷面板(快捷键/面板/预览与识别) → 进阶(AI/自动化)。
     static let functionGroup: [SettingsCategory] =
-        [.general, .appearance, .shortcuts, .quickPanel, .preview,
+        [.general, .appearance, .shortcuts, .quickPanel, .preview, .screenshot,
          .aiAgents, .aiService, .automation]
 
     /// 数据与隐私。
@@ -142,6 +144,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable, Hashable {
         case .appearance: return "settings.appearance"
         case .quickPanel: return "settings.quickPanel"
         case .preview: return "settings.previewRecognition"
+        case .screenshot: return "settings.screenshot"
         case .shortcuts: return "settings.shortcuts"
         case .privacy: return "settings.privacy"
         case .aiAgents: return "settings.tab.aiAgents"
@@ -159,6 +162,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable, Hashable {
         case .appearance: return "paintbrush"
         case .quickPanel: return "list.bullet.rectangle"
         case .preview: return "text.viewfinder"
+        case .screenshot: return "camera"
         case .shortcuts: return "keyboard"
         case .privacy: return "lock.shield"
         case .aiAgents: return "sparkles.rectangle.stack"
@@ -180,6 +184,7 @@ extension SettingsCategory {
         case .shortcuts: return .indigo
         case .quickPanel: return .blue
         case .preview: return .teal
+        case .screenshot: return .cyan
         case .aiAgents: return .orange
         case .aiService: return .mint
         case .automation: return .purple
@@ -1030,6 +1035,39 @@ struct PreviewPane: View {
             OCRSection()
 
             SMSCodeSection()
+        }
+        .formStyle(.grouped)
+    }
+}
+
+/// 「截图」页：截图行为设置（延时等），快捷键在「快捷键」页管理。
+struct ScreenshotSettingsPane: View {
+    @AppStorage("screenshotDelaySeconds") private var delaySeconds = 0
+
+    private let delayOptions = [0, 3, 5, 10]
+
+    private func delayLabel(_ seconds: Int) -> String {
+        L10n.tr(seconds == 0 ? "screenshot.delay.off" : "screenshot.delay.\(seconds)")
+    }
+
+    var body: some View {
+        Form {
+            Section {
+                Picker(L10n.tr("screenshot.delay"), selection: $delaySeconds) {
+                    ForEach(delayOptions, id: \.self) { value in
+                        Text(delayLabel(value)).tag(value)
+                    }
+                }
+                .pickerStyle(.segmented)
+            } header: {
+                Text(L10n.tr("settings.screenshot.delay"))
+            }
+
+            Section {
+                Text(L10n.tr("settings.screenshot.hint"))
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
         }
         .formStyle(.grouped)
     }

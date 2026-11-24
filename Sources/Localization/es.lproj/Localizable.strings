@@ -266,6 +266,8 @@
 "settings.preferences" = "Preferencias";
 "settings.quickPanel" = "Pegado rápido";
 "settings.previewRecognition" = "Vista previa y reconocimiento";
+"settings.screenshot" = "Captura de pantalla";
+"settings.screenshot.delay" = "Captura con retraso";
 "settings.showLinkURL" = "Mostrar URL en lugar del título para enlaces";
 "settings.webPreview" = "Vista previa web";
 "settings.imageLinkPreview" = "Vista previa de enlace de imagen";

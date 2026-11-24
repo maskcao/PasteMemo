@@ -266,6 +266,8 @@
 "settings.preferences" = "Einstellungen";
 "settings.quickPanel" = "Schnellpanel";
 "settings.previewRecognition" = "Vorschau & Erkennung";
+"settings.screenshot" = "Screenshot";
+"settings.screenshot.delay" = "Aufnahmeverzögerung";
 "settings.showLinkURL" = "URL statt Seitentitel für Links anzeigen";
 "settings.webPreview" = "Webvorschau";
 "settings.imageLinkPreview" = "Bild-Link-Vorschau";

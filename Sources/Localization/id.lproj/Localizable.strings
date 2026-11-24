@@ -189,6 +189,8 @@
 "settings.preferences" = "Preferensi";
 "settings.quickPanel" = "Tempel Cepat";
 "settings.previewRecognition" = "Pratinjau & Pengenalan";
+"settings.screenshot" = "Tangkapan Layar";
+"settings.screenshot.delay" = "Tunda Tangkapan";
 "settings.showLinkURL" = "Tampilkan URL alih-alih judul halaman untuk tautan";
 "settings.webPreview" = "Pratinjau web";
 "settings.imageLinkPreview" = "Pratinjau tautan gambar";

@@ -188,6 +188,8 @@
 "settings.preferences" = "偏好";
 "settings.quickPanel" = "快捷面板";
 "settings.previewRecognition" = "預覽與識別";
+"settings.screenshot" = "截圖";
+"settings.screenshot.delay" = "延時截圖";
 "settings.showLinkURL" = "連結顯示原始網址而非頁面標題";
 "settings.webPreview" = "網頁預覽";
 "settings.imageLinkPreview" = "圖片連結預覽";

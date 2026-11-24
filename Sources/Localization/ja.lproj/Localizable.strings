@@ -274,6 +274,8 @@
 "settings.preferences" = "環境設定";
 "settings.quickPanel" = "クイック貼り付け";
 "settings.previewRecognition" = "プレビューと認識";
+"settings.screenshot" = "スクリーンショット";
+"settings.screenshot.delay" = "キャプチャ遅延";
 "settings.ocr" = "OCR";
 "settings.ocr.enable" = "画像OCRを有効にする";
 "settings.ocr.auto" = "新しい画像を自動処理する";
