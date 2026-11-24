@@ -224,6 +224,18 @@ final class ScreenshotSelectionController: NSObject {
             windows: [(rect: CGRect, area: CGFloat)]
         ) {
             self.coveredScreen = screen
+            super.init(contentRect: screen.frame, styleMask: .borderless, backing: .buffered, defer: false)
+            level = .screenSaver
+            // A panel created after a theme switch does not reliably inherit
+            // NSApp.appearance. Pin it before it first appears, otherwise the
+            // toolbar starts with the previous theme's material and icons.
+            let targetAppearance = owner?.chromeAppearance ?? NSApp.effectiveAppearance
+            appearance = targetAppearance
+            // The toolbar is created while the process may still have the old
+            // drawing appearance, so its tint/layer colors are cached once at
+            // init. Refresh it explicitly before the panel is displayed; relying
+            // on AppKit to propagate the panel's new appearance has proven
+            // unreliable for this borderless screenSaver-level panel.
             let surface = ScreenshotSelectionSurfaceView(
                 frame: NSRect(origin: .zero, size: screen.frame.size),
                 image: image,
@@ -232,12 +244,7 @@ final class ScreenshotSelectionController: NSObject {
                 owner: owner,
                 windows: windows
             )
-            super.init(contentRect: screen.frame, styleMask: .borderless, backing: .buffered, defer: false)
-            level = .screenSaver
-            // A panel created after a theme switch does not reliably inherit
-            // NSApp.appearance. Pin it before it first appears, otherwise the
-            // toolbar starts with the previous theme's material and icons.
-            appearance = owner?.chromeAppearance ?? NSApp.effectiveAppearance
+            surface.refreshChromeForAppearance(targetAppearance)
             isOpaque = false
             backgroundColor = .clear
             hasShadow = false
