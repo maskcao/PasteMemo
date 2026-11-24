@@ -231,6 +231,10 @@ final class ScreenshotSelectionController: NSObject {
             )
             super.init(contentRect: screen.frame, styleMask: .borderless, backing: .buffered, defer: false)
             level = .screenSaver
+            // A panel created after a theme switch does not reliably inherit
+            // NSApp.appearance. Pin it before it first appears, otherwise the
+            // toolbar starts with the previous theme's material and icons.
+            appearance = NSApp.effectiveAppearance
             isOpaque = false
             backgroundColor = .clear
             hasShadow = false
@@ -482,6 +486,9 @@ final class ScreenshotSelectionSurfaceView: NSView {
 
     /// 主题切换后刷新悬浮 chrome（工具条 + 二级面板）
     func refreshChromeForAppearance() {
+        let appearance = NSApp.effectiveAppearance
+        toolbar?.appearance = appearance
+        optionsBar?.appearance = appearance
         toolbar?.refreshForAppearance()
         optionsBar?.refreshForAppearance()
     }
