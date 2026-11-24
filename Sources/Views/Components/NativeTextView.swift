@@ -238,8 +238,8 @@ struct NativeTextView: NSViewRepresentable {
         default:
             raw = NSAttributedString(rtf: data, documentAttributes: nil)
         }
-        // 解不出来、或者解出来是一整段没有任何字体能显示的码点时返回 nil，
-        // 调用方保留已经铺好的纯文本渲染。
+        // 解不出来、或者解出来是一整段没有可用字体覆盖 / 被塞进 LastResort 的
+        // 内容时返回 nil，调用方保留已经铺好的纯文本渲染。
         guard let raw, isRenderable(raw, plainText: plainText) else { return nil }
         // The plain fallback must never be keyed as if it were the decoded rich text:
         // on the next width change the cache would resurrect the corrupt rendering.
@@ -266,12 +266,12 @@ struct NativeTextView: NSViewRepresentable {
     ///
     /// 两道判据：
     ///
-    /// 1. 码点检查——某些来源给出的富文本会把整段正文解成私用区 / 未分配码点，
-    ///    系统里没有任何字体覆盖，渲染出来是一排 LastResort 的 "?" 方框——比纯
-    ///    文本还不可读（#88：VS Code 复制的代码在"文本"模式下整段变方框，而同
-    ///    一条在列表里显示正常）。判据是"过半可见字符不可渲染"而不是"存在即否
-    ///    决"：从终端复制的 Powerline / Nerd Font 图标本身就是私用区字符，那些
-    ///    条目只是夹带少量，富文本照常渲染。
+    /// 1. 码点 / 字体检查——某些来源给出的富文本会把整段正文解成私用区 /
+    ///    未分配码点；另一些来源（如 TRAE）的 HTML 能解出正确字符，但 AppKit
+    ///    会把正文全部挂到 LastResort 兜底字体上，普通 ASCII 也会画成 "？"。
+    ///    判据都是"过半可见字符不可读"而不是"存在即否决"：从终端复制的
+    ///    Powerline / Nerd Font 图标本身就是私用区字符，那些条目只是夹带少量，
+    ///    富文本照常渲染。
     ///
     /// 2. 丢字符检查（传入 `plainText` 时）——解码结果里 "?" / U+FFFD 的占比
     ///    远高于纯文本原文，说明字符是在富文本解码这一步丢的，宁可放弃格式退回
@@ -300,6 +300,7 @@ struct NativeTextView: NSViewRepresentable {
             if visible >= renderabilityScanLimit { break }
         }
         guard visible > 0 else { return true }
+        if lastResortVisibleCount(in: attributed) * 2 >= visible { return false }
         if unrenderable * 2 >= visible { return false }
         if let plainText,
            // Hard gate: a long unexplained "?" run is always corruption, even when
@@ -313,6 +314,32 @@ struct NativeTextView: NSViewRepresentable {
             return false
         }
         return true
+    }
+
+    /// LastResort 是 AppKit 的最后兜底字体。它出现时字符可能完全合法，但显示
+    /// 效果仍是成片 "?"，所以富文本解码结果不能靠"字符串正确"放行。
+    nonisolated private static func lastResortVisibleCount(in attributed: NSAttributedString) -> Int {
+        var count = 0
+        var scanned = 0
+        attributed.enumerateAttribute(.font, in: NSRange(location: 0, length: attributed.length)) { value, range, stop in
+            guard let font = value as? NSFont, isLastResortFont(font) else { return }
+            let text = attributed.attributedSubstring(from: range).string
+            for scalar in text.unicodeScalars {
+                scanned += 1
+                if scalar.value < 0x20 || scalar.value == 0xFFFC || scalar.properties.isWhitespace { continue }
+                count += 1
+                if scanned >= renderabilityScanLimit {
+                    stop.pointee = true
+                    return
+                }
+            }
+        }
+        return count
+    }
+
+    nonisolated private static func isLastResortFont(_ font: NSFont) -> Bool {
+        font.fontName.caseInsensitiveCompare("LastResort") == .orderedSame
+            || font.familyName?.caseInsensitiveCompare(".LastResort") == .orderedSame
     }
 
     /// Longest run of "?" / U+FFFD. A rich-text decoder should never invent such a

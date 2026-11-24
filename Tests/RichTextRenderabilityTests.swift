@@ -47,6 +47,31 @@ struct RichTextRenderabilityTests {
         #expect(NativeTextView.isRenderable(attributed("\u{E0B0} ~/Documents/Dev \u{E0B0} main \u{F09B} ok")))
     }
 
+    /// TRAE 的 HTML 能解出正确文本，但 AppKit 给整段正文挂上 LastResort；
+    /// LastResort 会把普通 ASCII 也渲染成 "？"。
+    @Test("解码成功但整段是 LastResort 兜底字体 → 否决")
+    func lastResortFontFloodRejected() throws {
+        let font = try #require(NSFont(name: "LastResort", size: 13))
+        let decoded = NSAttributedString(
+            string: "GET /vcac/ HTTP/1.1\nHost: {{Hostname}}",
+            attributes: [.font: font]
+        )
+        #expect(!NativeTextView.isRenderable(decoded, plainText: decoded.string))
+    }
+
+    @Test("少量 LastResort 符号不否决整段富文本")
+    func occasionalLastResortSymbolsPass() {
+        let decoded = NSMutableAttributedString(
+            string: "normal text ",
+            attributes: [.font: NSFont.systemFont(ofSize: 13)]
+        )
+        decoded.append(NSAttributedString(
+            string: "\u{E0B0}",
+            attributes: [.font: NSFont(name: "LastResort", size: 13)!]
+        ))
+        #expect(NativeTextView.isRenderable(decoded, plainText: decoded.string))
+    }
+
     @Test("空白与图片占位符不参与判断")
     func whitespaceAndAttachmentsIgnored() {
         // 纯图片富文本：正文只有 attachment 占位符，不该被当成坏数据
