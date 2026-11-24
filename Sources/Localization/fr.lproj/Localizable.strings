@@ -266,6 +266,16 @@
 "settings.preferences" = "Préférences";
 "settings.quickPanel" = "Collage rapide";
 "settings.previewRecognition" = "Aperçu et reconnaissance";
+"capture.mode.long" = "Capture longue";
+"capture.long.start" = "Démarrer la capture";
+"capture.long.finish" = "Terminer";
+"capture.long.autoscroll" = "Défilement automatique";
+"capture.long.capturing" = "Faites défiler la page — assemblage automatique…";
+"capture.long.height" = "%lld px assemblés";
+"capture.long.bottom" = "Bas de page atteint — cliquez sur Terminer";
+"capture.long.copied" = "Capture longue copiée";
+"capture.long.preview" = "Aperçu de la capture longue";
+"capture.long.failed" = "Échec de la capture longue";
 "settings.screenshot" = "Capture d’écran";
 "settings.screenshot.delay" = "Capture différée";
 "settings.showLinkURL" = "Afficher l'URL au lieu du titre pour les liens";

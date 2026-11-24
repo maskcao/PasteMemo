@@ -199,6 +199,16 @@
 "settings.preferences" = "偏好";
 "settings.quickPanel" = "快捷面板";
 "settings.previewRecognition" = "预览与识别";
+"capture.mode.long" = "长截图";
+"capture.long.start" = "开始长截图";
+"capture.long.finish" = "完成";
+"capture.long.autoscroll" = "自动滚动";
+"capture.long.capturing" = "滚动页面，自动拼接中…";
+"capture.long.height" = "已拼接 %lld px";
+"capture.long.bottom" = "已滚动到底，点击完成生成";
+"capture.long.copied" = "长截图已复制";
+"capture.long.preview" = "长截图预览";
+"capture.long.failed" = "长截图失败";
 "settings.screenshot" = "截图";
 "settings.screenshot.delay" = "延时截图";
 "settings.showLinkURL" = "链接显示原始网址而非页面标题";

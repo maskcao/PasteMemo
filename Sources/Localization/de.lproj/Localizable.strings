@@ -266,6 +266,16 @@
 "settings.preferences" = "Einstellungen";
 "settings.quickPanel" = "Schnellpanel";
 "settings.previewRecognition" = "Vorschau & Erkennung";
+"capture.mode.long" = "Langbild-Screenshot";
+"capture.long.start" = "Aufnahme starten";
+"capture.long.finish" = "Fertig";
+"capture.long.autoscroll" = "Automatisch scrollen";
+"capture.long.capturing" = "Seite scrollen – wird automatisch zusammengefügt…";
+"capture.long.height" = "%lld px zusammengefügt";
+"capture.long.bottom" = "Seitenende erreicht – auf „Fertig“ klicken";
+"capture.long.copied" = "Langbild-Screenshot kopiert";
+"capture.long.preview" = "Langbild-Vorschau";
+"capture.long.failed" = "Langbild-Aufnahme fehlgeschlagen";
 "settings.screenshot" = "Screenshot";
 "settings.screenshot.delay" = "Aufnahmeverzögerung";
 "settings.showLinkURL" = "URL statt Seitentitel für Links anzeigen";

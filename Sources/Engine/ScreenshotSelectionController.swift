@@ -3,6 +3,33 @@ import CoreGraphics
 import UniformTypeIdentifiers
 import Vision
 
+/// 长截图（滚动截图）会话状态。开始捕获后选区面板整体隐藏（点击穿透 + 透明），
+/// 只留 HUD 浮窗，帧采集与拼接都围绕这个会话进行。
+final class LongCaptureSessionState {
+    let stitcher: LongScreenshotStitcher
+    /// 本屏显示像素空间（CGImage 空间，左上原点）的捕获区域
+    let pixelRect: CGRect
+    var timer: Timer?
+    var hud: LongCaptureHUD?
+    /// 连续无新增内容的帧数，达到阈值提示「已滚动到底」
+    var noAddStreak = 0
+
+    init(stitcher: LongScreenshotStitcher, pixelRect: CGRect) {
+        self.stitcher = stitcher
+        self.pixelRect = pixelRect
+    }
+
+    func stopTimer() {
+        timer?.invalidate()
+        timer = nil
+    }
+
+    func closeHUD() {
+        hud?.close()
+        hud = nil
+    }
+}
+
 /// 浮引式自绘框选：触发热键后逐屏开全屏透明面板，先用 CGDisplayCreateImage 冻结当前画面，
 /// 之后的框选/标注都在冻结帧上做——不存在「截到自己的遮罩」的问题。
 /// 标注工具条挂在选区下方（浮引同款玻璃条），确认后扁平化直接进剪贴板，不再弹独立编辑器窗口。
@@ -120,6 +147,19 @@ final class ScreenshotSelectionController: NSObject {
         moved.post(tap: .cghidEventTap)
     }
 
+    /// 滚动截图捕获期间隐藏全部选区面板（透明 + 点击穿透），完成后恢复。
+    func setPanelsHidden(_ hidden: Bool) {
+        panels.forEach { panel in
+            panel.alphaValue = hidden ? 0 : 1
+            panel.ignoresMouseEvents = hidden
+        }
+    }
+
+    /// 滚动截图完成：直接收起整套框选 UI（预览窗自行展示）。
+    func finishLongSession() {
+        closeAll()
+    }
+
     func confirmSelection(pngData: Data) {
         closeAll()
         // 不带 markAsPasteMemoWrite 写剪贴板 → ClipboardManager 照常捕获成新条目
@@ -149,6 +189,7 @@ final class ScreenshotSelectionController: NSObject {
     private func closeAll() {
         ToolbarButton.dismissHoverTip()
         panels.forEach {
+            ($0.contentView as? ScreenshotSelectionSurfaceView)?.abortLongCaptureIfNeeded()
             ($0.contentView as? ScreenshotSelectionSurfaceView)?.stopCursorAssertion()
             $0.alphaValue = 1
             $0.ignoresMouseEvents = false
@@ -249,6 +290,10 @@ final class ScreenshotSelectionSurfaceView: NSView {
     private var undoStack: [[ScreenshotAnnotation]] = []
     private var redoStack: [[ScreenshotAnnotation]] = []
     private var activeTool: ScreenshotAnnotation.Kind?
+
+    /// 滚动截图进行中的会话状态；非 nil 表示正在滚动捕获
+    var longSession: LongCaptureSessionState?
+    private var autoScrollEnabled = false
 
     /// 形状按钮记住上一次选的形状（矩形/椭圆），面板里的下拉也能改。
     private var shapeKind: ScreenshotAnnotation.Kind = .rectangle
@@ -1021,6 +1066,7 @@ final class ScreenshotSelectionSurfaceView: NSView {
         case 9: extractText()
         case 14: translateSelection()
         case 13: recognizeQRCode()
+        case 12: startLongCapture()
         case 10: pinSelection()
         case 511...513:
             widthPreset = control.tag - 511
@@ -1121,6 +1167,116 @@ final class ScreenshotSelectionSurfaceView: NSView {
         rememberCurrentSettings()
     }
 
+    // MARK: - 滚动截图（框选 → 滚动自动拼接 → 预览复制/保存）
+
+    /// 隐藏选区面板，露出真实屏幕内容供滚动（HUD 在捕获区域外，不会入镜）。
+    private func captureDisplayImage(for rect: CGRect) -> CGImage? {
+        guard let displayID = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID,
+              let cg = CGDisplayCreateImage(displayID) else { return nil }
+        let displayBounds = CGRect(x: 0, y: 0, width: cg.width, height: cg.height)
+        let crop = rect.intersection(displayBounds)
+        guard abs(crop.width - rect.width) < 1, abs(crop.height - rect.height) < 1 else { return nil }
+        return cg.cropping(to: crop)
+    }
+
+    func startLongCapture() {
+        guard selection != nil, longSession == nil else { return }
+        finishTextEntry(commit: true)
+        activeTool = nil
+        draft = nil
+
+        let sel = selection!.integral
+        let pixelRect = CGRect(
+            x: sel.minX * pixelScale, y: sel.minY * pixelScale,
+            width: sel.width * pixelScale, height: sel.height * pixelScale
+        ).integral
+        // 先把面板藏掉再抓首帧，避免遮罩入镜
+        owner?.setPanelsHidden(true)
+        guard let first = captureDisplayImage(for: pixelRect) else {
+            owner?.setPanelsHidden(false)
+            showChip(L10n.tr("capture.long.failed"))
+            return
+        }
+        let stitcher = LongScreenshotStitcher(pixelWidth: first.width)
+        stitcher.append(first)
+        let session = LongCaptureSessionState(stitcher: stitcher, pixelRect: pixelRect)
+        longSession = session
+
+        let hud = LongCaptureHUD(
+            regionRect: sel, screen: screen,
+            onFinish: { [weak self] in self?.finishLongCapture() },
+            onCancel: { [weak self] in self?.cancelLongCapture() },
+            onAutoscroll: { [weak self] enabled in self?.autoScrollEnabled = enabled }
+        )
+        hud.showPanel()
+        session.hud = hud
+
+        let timer = Timer(timeInterval: 0.35, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.longTick() }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        session.timer = timer
+        needsDisplay = true
+    }
+
+    private func longTick() {
+        guard let session = longSession else { return }
+        guard let frame = captureDisplayImage(for: session.pixelRect) else { return }
+        guard let result = session.stitcher.append(frame) else { return }
+        if result.atBottom {
+            session.noAddStreak += 1
+        } else {
+            session.noAddStreak = 0
+        }
+        let atBottom = session.noAddStreak >= 4
+        session.hud?.update(height: result.totalRows, atBottom: atBottom)
+        if autoScrollEnabled, !atBottom {
+            postScrollTick()
+        }
+    }
+
+    /// 自动滚动：向前台窗口发送滚轮事件（需要辅助功能权限，缺权限时静默失败）。
+    private func postScrollTick() {
+        guard let event = CGEvent(
+            scrollWheelEvent2Source: nil, units: .line, wheelCount: 1,
+            wheel1: -3, wheel2: 0, wheel3: 0
+        ) else { return }
+        event.post(tap: .cghidEventTap)
+    }
+
+    private func finishLongCapture() {
+        guard let session = longSession else { return }
+        teardownLongSession()
+        owner?.setPanelsHidden(false)
+        guard let image = session.stitcher.makeImage(),
+              let png = NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:]) else {
+            showChip(L10n.tr("capture.long.failed"))
+            return
+        }
+        owner?.finishLongSession()
+        LongCapturePreview.present(pngData: png)
+    }
+
+    private func cancelLongCapture() {
+        guard longSession != nil else { return }
+        teardownLongSession()
+        owner?.setPanelsHidden(false)
+        needsDisplay = true
+    }
+
+    private func teardownLongSession() {
+        guard let session = longSession else { return }
+        session.stopTimer()
+        session.closeHUD()
+        autoScrollEnabled = false
+        longSession = nil
+    }
+
+    /// 面板被外部关闭（Esc / 取消）时中断滚动捕获。
+    func abortLongCaptureIfNeeded() {
+        teardownLongSession()
+    }
+
     // MARK: - Keyboard
 
     /// Shift 切换取色读数的格式（HEX ↔ RGB）。
@@ -1184,8 +1340,10 @@ final class ScreenshotSelectionSurfaceView: NSView {
             } else {
                 owner?.cancel()
             }
-        case 36, 76: // Return / keypad Enter：截图确认
-            if selection != nil {
+        case 36, 76: // Return / keypad Enter：滚动截图中 = 完成；否则确认截图
+            if longSession != nil {
+                finishLongCapture()
+            } else if selection != nil {
                 confirm()
             }
         case 123, 124, 125, 126: // 方向键微调 1pt，Shift 10pt
@@ -2320,6 +2478,7 @@ final class SelectionToolbar: NSVisualEffectView {
     private var shapeButton: ToolbarButton!
     private var currentShapeAsset = "Shape"
     private var modeScreenshotButton: ToolbarButton!
+    private var startLongButton: ToolbarButton!
     private let chromeTintView = NSView()
 
     /// 磨砂条叠加色：随系统深浅色自适应。
@@ -2382,7 +2541,7 @@ final class SelectionToolbar: NSVisualEffectView {
             add(tag, .symbol(symbol), tooltip)
         }
 
-        // 左侧保留截图模式入口；长截图入口已按需求移除
+        // 左侧截图模式入口
         modeScreenshotButton = add(20, .asset("Annotation"), L10n.tr("capture.mode.screenshot"))
         stack.addArrangedSubview(Self.divider())
 
@@ -2400,6 +2559,7 @@ final class SelectionToolbar: NSVisualEffectView {
         ocrButton = add(9, .asset("OCR"), L10n.tr("editor.tool.ocr"))
         translateButton = add(14, .asset("Translate"), L10n.tr("editor.tool.translate"))
         qrButton = add(13, .asset("QRCode"), L10n.tr("editor.tool.qr"))
+        startLongButton = add(12, .asset("LongCapture"), L10n.tr("capture.long.start"))
         stack.addArrangedSubview(Self.divider())
 
         undoButton = add(301, .asset("Undo"), L10n.tr("editor.undo"))
@@ -2444,7 +2604,7 @@ final class SelectionToolbar: NSVisualEffectView {
     func update(tool: ScreenshotAnnotation.Kind?, canUndo: Bool, canRedo: Bool, hasSelection: Bool) {
         let activeTag = Self.tag(for: tool) ?? 0
         for (tag, button) in toolButtons {
-            let isAction = (301...306).contains(tag) || tag == 15 || tag == 20
+            let isAction = (301...306).contains(tag) || tag == 12 || tag == 15 || tag == 20
             button.selectedState = tag == activeTag && !isAction
         }
         modeScreenshotButton.selectedState = true
@@ -2456,6 +2616,7 @@ final class SelectionToolbar: NSVisualEffectView {
         ocrButton.isEnabled = hasSelection
         translateButton.isEnabled = hasSelection
         qrButton.isEnabled = hasSelection
+        startLongButton.isEnabled = hasSelection
         pinButton.isEnabled = hasSelection
         switch tool {
         case .rectangle: setShapeAsset("ShapeRectangle")
@@ -3839,5 +4000,254 @@ private extension CGRect {
 
     func offsetBy(dx: CGFloat, dy: CGFloat) -> CGRect {
         CGRect(x: minX + dx, y: minY + dy, width: width, height: height)
+    }
+}
+final class LongCaptureHUD: NSPanel {
+    private let statusLabel: NSTextField
+    private let autoscrollButton: NSButton
+
+    init(
+        regionRect: CGRect, screen: NSScreen,
+        onFinish: @escaping () -> Void,
+        onCancel: @escaping () -> Void,
+        onAutoscroll: @escaping (Bool) -> Void
+    ) {
+        statusLabel = NSTextField(labelWithString: L10n.tr("capture.long.capturing"))
+        statusLabel.font = .systemFont(ofSize: 12, weight: .medium)
+        statusLabel.textColor = NSColor(white: 0.12, alpha: 1)
+
+        autoscrollButton = NSButton(checkboxWithTitle: L10n.tr("capture.long.autoscroll"), target: nil, action: nil)
+        autoscrollButton.font = .systemFont(ofSize: 12)
+
+        let finishButton = NSButton(title: L10n.tr("capture.long.finish"), target: nil, action: nil)
+        finishButton.bezelStyle = .rounded
+        finishButton.keyEquivalent = "\r"
+        finishButton.controlSize = .small
+        finishButton.font = .systemFont(ofSize: 12, weight: .medium)
+
+        let cancelButton = NSButton(title: L10n.tr("action.cancel"), target: nil, action: nil)
+        cancelButton.bezelStyle = .rounded
+        cancelButton.controlSize = .small
+        cancelButton.font = .systemFont(ofSize: 12)
+
+        let effect = NSVisualEffectView()
+        effect.material = .popover
+        effect.blendingMode = .withinWindow
+        effect.state = .active
+        effect.appearance = NSAppearance(named: .aqua)
+        effect.wantsLayer = true
+        effect.layer?.cornerRadius = 12
+        effect.layer?.masksToBounds = true
+
+        let tint = NSView()
+        tint.wantsLayer = true
+        tint.layer?.backgroundColor = NSColor(white: 1, alpha: 0.72).cgColor
+
+        let stack = NSStackView(views: [statusLabel, autoscrollButton, finishButton, cancelButton])
+        stack.orientation = .horizontal
+        stack.alignment = .centerY
+        stack.spacing = 10
+        stack.edgeInsets = NSEdgeInsets(top: 8, left: 14, bottom: 8, right: 14)
+        statusLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        statusLabel.setContentHuggingPriority(.defaultLow, for: .horizontal)
+
+        let container = NSView()
+        container.translatesAutoresizingMaskIntoConstraints = false
+        tint.translatesAutoresizingMaskIntoConstraints = false
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        effect.addSubview(tint)
+        effect.addSubview(stack)
+        container.addSubview(effect)
+
+        super.init(
+            contentRect: NSRect(x: 0, y: 0, width: 380, height: 52),
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered, defer: false
+        )
+        level = .screenSaver
+        isOpaque = false
+        backgroundColor = .clear
+        hasShadow = true
+        hidesOnDeactivate = false
+        contentView = container
+
+        NSLayoutConstraint.activate([
+            effect.topAnchor.constraint(equalTo: container.topAnchor, constant: 0),
+            effect.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: 0),
+            effect.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 0),
+            effect.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: 0),
+
+            tint.topAnchor.constraint(equalTo: effect.topAnchor),
+            tint.bottomAnchor.constraint(equalTo: effect.bottomAnchor),
+            tint.leadingAnchor.constraint(equalTo: effect.leadingAnchor),
+            tint.trailingAnchor.constraint(equalTo: effect.trailingAnchor),
+
+            stack.topAnchor.constraint(equalTo: effect.topAnchor, constant: 8),
+            stack.bottomAnchor.constraint(equalTo: effect.bottomAnchor, constant: -8),
+            stack.leadingAnchor.constraint(equalTo: effect.leadingAnchor, constant: 14),
+            stack.trailingAnchor.constraint(equalTo: effect.trailingAnchor, constant: -14),
+        ])
+
+        // 目标回调（NSButton target 需要 target-action；用辅助闭包持有）
+        finishButton.target = ClosureTarget.shared
+        finishButton.action = #selector(ClosureTarget.finishAction)
+        ClosureTarget.shared.finishHandler = onFinish
+        cancelButton.target = ClosureTarget.shared
+        cancelButton.action = #selector(ClosureTarget.cancelAction)
+        ClosureTarget.shared.cancelHandler = onCancel
+        autoscrollButton.target = ClosureTarget.shared
+        autoscrollButton.action = #selector(ClosureTarget.autoscrollAction)
+        ClosureTarget.shared.autoscrollHandler = onAutoscroll
+
+        // 位置：优先捕获区域正上方；放不下则放区域下方（始终在捕获区域外，不会入镜）
+        let width: CGFloat = 380
+        let height: CGFloat = 52
+        let gap: CGFloat = 12
+        let visibleTop = screen.frame.maxY
+        let visibleBottom = screen.frame.minY
+        var hudOriginY = screen.frame.maxY - regionRect.minY + gap
+        if hudOriginY + height > visibleTop {
+            hudOriginY = screen.frame.maxY - regionRect.maxY - gap - height
+        }
+        hudOriginY = max(visibleBottom + 4, min(hudOriginY, visibleTop - height - 4))
+        var x = screen.frame.minX + regionRect.midX - width / 2
+        x = max(screen.frame.minX + 8, min(x, screen.frame.maxX - width - 8))
+        setFrameOrigin(NSPoint(x: x, y: hudOriginY))
+    }
+
+    required init?(coder: NSCoder) { fatalError("not used") }
+
+    override var canBecomeKey: Bool { true }
+
+    func showPanel() {
+        makeKeyAndOrderFront(nil)
+    }
+
+    func update(height: Int, atBottom: Bool) {
+        statusLabel.stringValue = atBottom
+            ? L10n.tr("capture.long.bottom")
+            : String(format: L10n.tr("capture.long.height"), height)
+    }
+
+    override func keyDown(with event: NSEvent) {
+        if Int(event.keyCode) == 53 { // Esc 取消
+            ClosureTarget.shared.cancelHandler?()
+        } else {
+            super.keyDown(with: event)
+        }
+    }
+}
+
+/// NSButton 需要 target-action 桥接闭包的最小容器。
+@MainActor
+final class ClosureTarget: NSObject {
+    static let shared = ClosureTarget()
+    var finishHandler: (() -> Void)?
+    var cancelHandler: (() -> Void)?
+    var autoscrollHandler: ((Bool) -> Void)?
+    /// 预览窗的输出数据（复制/保存用）
+    var pngData: Data?
+    weak var previewWindow: NSWindow?
+
+    @objc func finishAction(_ sender: Any?) { finishHandler?() }
+    @objc func cancelAction(_ sender: Any?) { cancelHandler?() }
+    @objc func autoscrollAction(_ sender: NSButton) {
+        autoscrollHandler?(sender.state == .on)
+    }
+
+    @objc func copyPNGAction(_ sender: Any?) {
+        guard let pngData else { return }
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setData(pngData, forType: .png)
+        previewWindow?.close()
+        ToastCenter.shared.show(ToastDescriptor(message: L10n.tr("capture.long.copied"), icon: .success))
+    }
+
+    @objc func savePNGAction(_ sender: Any?) {
+        guard let pngData, let window = previewWindow else { return }
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.png]
+        panel.nameFieldStringValue = "LongScreenshot.png"
+        panel.canCreateDirectories = true
+        panel.beginSheetModal(for: window) { response in
+            if response == .OK, let url = panel.url {
+                try? pngData.write(to: url)
+            }
+        }
+    }
+}
+
+// MARK: - 长截图预览（完成后预览长图，复制或保存——对齐 FloGravity 流程）
+
+@MainActor
+final class LongCapturePreview {
+    @discardableResult
+    static func present(pngData: Data) -> NSWindow? {
+        guard let image = NSImage(data: pngData) else { return nil }
+
+        let size = image.size
+        let maxWidth = min(760, (NSScreen.main?.frame.width ?? 1200) - 80)
+        let maxHeight = (NSScreen.main?.frame.height ?? 900) - 160
+        let windowWidth = maxWidth
+        let windowHeight = min(maxHeight, max(360, size.height * min(1, maxWidth / size.width) + 92))
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: windowWidth, height: windowHeight),
+            styleMask: [.titled, .closable, .miniaturizable],
+            backing: .buffered, defer: false
+        )
+        window.title = L10n.tr("capture.long.preview")
+        window.isReleasedWhenClosed = false
+
+        let scrollView = NSScrollView()
+        scrollView.hasVerticalScroller = true
+        scrollView.hasHorizontalScroller = false
+        scrollView.autohidesScrollers = true
+        scrollView.borderType = .noBorder
+        scrollView.documentView = NSImageView(image: image)
+        (scrollView.documentView as? NSImageView)?.imageScaling = .scaleNone
+
+        let copyButton = NSButton(title: L10n.tr("editor.copy"), target: nil, action: nil)
+        copyButton.bezelStyle = .rounded
+        let saveButton = NSButton(title: L10n.tr("editor.saveToFile"), target: nil, action: nil)
+        saveButton.bezelStyle = .rounded
+        let infoLabel = NSTextField(labelWithString: "\(Int(size.width)) × \(Int(size.height)) px")
+        infoLabel.font = .systemFont(ofSize: 11)
+        infoLabel.textColor = .secondaryLabelColor
+
+        let buttonStack = NSStackView(views: [infoLabel, NSView(), saveButton, copyButton])
+        buttonStack.orientation = .horizontal
+        buttonStack.spacing = 10
+        buttonStack.edgeInsets = NSEdgeInsets(top: 8, left: 14, bottom: 8, right: 14)
+
+        let container = NSView()
+        scrollView.translatesAutoresizingMaskIntoConstraints = false
+        buttonStack.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(scrollView)
+        container.addSubview(buttonStack)
+        NSLayoutConstraint.activate([
+            scrollView.topAnchor.constraint(equalTo: container.topAnchor),
+            scrollView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            scrollView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: buttonStack.topAnchor, constant: -4),
+            buttonStack.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            buttonStack.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            buttonStack.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+            buttonStack.heightAnchor.constraint(equalToConstant: 40),
+        ])
+        window.contentView = container
+
+        copyButton.target = ClosureTarget.shared
+        copyButton.action = #selector(ClosureTarget.copyPNGAction)
+        saveButton.target = ClosureTarget.shared
+        saveButton.action = #selector(ClosureTarget.savePNGAction)
+        ClosureTarget.shared.pngData = pngData
+        ClosureTarget.shared.previewWindow = window
+
+        window.center()
+        NSApp.activate(ignoringOtherApps: true)
+        window.makeKeyAndOrderFront(nil)
+        return window
     }
 }

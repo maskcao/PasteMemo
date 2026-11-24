@@ -189,6 +189,16 @@
 "settings.preferences" = "Preferenze";
 "settings.quickPanel" = "Incolla Rapido";
 "settings.previewRecognition" = "Anteprima e riconoscimento";
+"capture.mode.long" = "Istantanea lunga";
+"capture.long.start" = "Avvia acquisizione";
+"capture.long.finish" = "Fine";
+"capture.long.autoscroll" = "Scorrimento automatico";
+"capture.long.capturing" = "Scorri la pagina: l'unione è automatica…";
+"capture.long.height" = "%lld px uniti";
+"capture.long.bottom" = "Fine pagina raggiunta — premi Fine";
+"capture.long.copied" = "Istantanea lunga copiata";
+"capture.long.preview" = "Anteprima istantanea lunga";
+"capture.long.failed" = "Acquisizione lunga non riuscita";
 "settings.screenshot" = "Istantanea";
 "settings.screenshot.delay" = "Ripresa con ritardo";
 "settings.showLinkURL" = "Mostra URL invece del titolo per i link";

@@ -188,6 +188,16 @@
 "settings.preferences" = "偏好";
 "settings.quickPanel" = "快捷面板";
 "settings.previewRecognition" = "預覽與識別";
+"capture.mode.long" = "長截圖";
+"capture.long.start" = "開始長截圖";
+"capture.long.finish" = "完成";
+"capture.long.autoscroll" = "自動捲動";
+"capture.long.capturing" = "捲動頁面，自動拼接中…";
+"capture.long.height" = "已拼接 %lld px";
+"capture.long.bottom" = "已捲動到底，點擊完成生成";
+"capture.long.copied" = "長截圖已複製";
+"capture.long.preview" = "長截圖預覽";
+"capture.long.failed" = "長截圖失敗";
 "settings.screenshot" = "截圖";
 "settings.screenshot.delay" = "延時截圖";
 "settings.showLinkURL" = "連結顯示原始網址而非頁面標題";

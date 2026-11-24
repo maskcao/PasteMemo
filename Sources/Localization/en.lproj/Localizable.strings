@@ -199,6 +199,16 @@
 "settings.preferences" = "Preferences";
 "settings.quickPanel" = "Quick Paste";
 "settings.previewRecognition" = "Preview & Recognition";
+"capture.mode.long" = "Long Capture";
+"capture.long.start" = "Start Scrolling";
+"capture.long.finish" = "Finish";
+"capture.long.autoscroll" = "Auto-scroll";
+"capture.long.capturing" = "Scroll the page — stitching automatically…";
+"capture.long.height" = "Stitched %lld px";
+"capture.long.bottom" = "Reached the bottom — click Finish";
+"capture.long.copied" = "Long screenshot copied";
+"capture.long.preview" = "Long Screenshot Preview";
+"capture.long.failed" = "Long capture failed";
 "settings.screenshot" = "Screenshot";
 "settings.screenshot.delay" = "Capture Delay";
 "settings.showLinkURL" = "Show URL instead of page title for links";

@@ -189,6 +189,16 @@
 "settings.preferences" = "Preferensi";
 "settings.quickPanel" = "Tempel Cepat";
 "settings.previewRecognition" = "Pratinjau & Pengenalan";
+"capture.mode.long" = "Tangkapan Panjang";
+"capture.long.start" = "Mulai Gulir";
+"capture.long.finish" = "Selesai";
+"capture.long.autoscroll" = "Gulir Otomatis";
+"capture.long.capturing" = "Gulir halaman — digabung otomatis…";
+"capture.long.height" = "%lld px digabung";
+"capture.long.bottom" = "Sampai bawah halaman — klik Selesai";
+"capture.long.copied" = "Tangkapan panjang disalin";
+"capture.long.preview" = "Pratinjau Tangkapan Panjang";
+"capture.long.failed" = "Tangkapan panjang gagal";
 "settings.screenshot" = "Tangkapan Layar";
 "settings.screenshot.delay" = "Tunda Tangkapan";
 "settings.showLinkURL" = "Tampilkan URL alih-alih judul halaman untuk tautan";

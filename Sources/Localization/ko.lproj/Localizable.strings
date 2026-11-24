@@ -266,6 +266,16 @@
 "settings.preferences" = "환경설정";
 "settings.quickPanel" = "빠른 붙여넣기";
 "settings.previewRecognition" = "미리보기 및 인식";
+"capture.mode.long" = "긴 스크린샷";
+"capture.long.start" = "캡처 시작";
+"capture.long.finish" = "완료";
+"capture.long.autoscroll" = "자동 스크롤";
+"capture.long.capturing" = "페이지를 스크롤하면 자동으로 이어 붙습니다…";
+"capture.long.height" = "%lld px 연결됨";
+"capture.long.bottom" = "끝에 도달함 — 완료를 클릭하세요";
+"capture.long.copied" = "긴 스크린샷이 복사되었습니다";
+"capture.long.preview" = "긴 스크린샷 미리보기";
+"capture.long.failed" = "긴 스크린샷에 실패했습니다";
 "settings.screenshot" = "스크린샷";
 "settings.screenshot.delay" = "지연 캡처";
 "settings.showLinkURL" = "링크를 페이지 제목 대신 URL로 표시";
