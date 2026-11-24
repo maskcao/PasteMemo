@@ -43,7 +43,7 @@ jobs:
 
       - name: Package DMG
         env:
-          VERSION: "1.2.3"
+          VERSION: "1.2.4"
           CODESIGN_IDENTITY: "PasteMemo Local Signing"
         run: bash scripts/package.sh
 
