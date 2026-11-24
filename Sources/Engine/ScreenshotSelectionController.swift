@@ -2472,6 +2472,11 @@ extension NSView {
     /// 外观切换后，自定义 draw(_) 的子视图不会被 AppKit 自动标记重绘，图标会
     /// 停留在旧主题的颜色上（深色条上叠浅色图标几乎不可见）；把整棵子树显式
     /// 标记为待重绘，按钮/分隔线才会按新外观重新着色。
+    func applyAppearanceRecursively(_ appearance: NSAppearance) {
+        self.appearance = appearance
+        subviews.forEach { $0.applyAppearanceRecursively(appearance) }
+    }
+
     func invalidateDisplayRecursively() {
         needsDisplay = true
         subviews.forEach { $0.invalidateDisplayRecursively() }
@@ -2599,6 +2604,7 @@ final class SelectionToolbar: NSVisualEffectView {
     /// effectiveAppearance 解析会继续用旧主题。
     func refreshForAppearance(_ appearance: NSAppearance? = nil) {
         let targetAppearance = appearance ?? NSApp.effectiveAppearance
+        applyAppearanceRecursively(targetAppearance)
         targetAppearance.performAsCurrentDrawingAppearance {
             chromeTintView.layer?.backgroundColor = Self.chromeTint.cgColor
             layer?.borderColor = NSColor.separatorColor.cgColor
@@ -2748,6 +2754,7 @@ final class SelectionOptionsBar: NSVisualEffectView {
     /// 同 SelectionToolbar：按应用当前外观重新解析，并标记整树重绘
     func refreshForAppearance(_ appearance: NSAppearance? = nil) {
         let targetAppearance = appearance ?? NSApp.effectiveAppearance
+        applyAppearanceRecursively(targetAppearance)
         targetAppearance.performAsCurrentDrawingAppearance {
             chromeTintView.layer?.backgroundColor = SelectionToolbar.chromeTint.cgColor
             layer?.borderColor = NSColor.separatorColor.cgColor
