@@ -229,7 +229,7 @@ final class ScreenshotSelectionController: NSObject {
             // A panel created after a theme switch does not reliably inherit
             // NSApp.appearance. Pin it before it first appears, otherwise the
             // toolbar starts with the previous theme's material and icons.
-            let targetAppearance = owner?.chromeAppearance ?? NSApp.effectiveAppearance
+            let targetAppearance = owner.chromeAppearance
             appearance = targetAppearance
             // The toolbar is created while the process may still have the old
             // drawing appearance, so its tint/layer colors are cached once at

@@ -239,10 +239,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let appearance: NSAppearance
         switch mode {
         case "light":
-            appearance = NSAppearance(named: .aqua)
+            appearance = NSAppearance(named: .aqua) ?? .currentDrawing()
+                ?? NSApp.effectiveAppearance
             NSApp.appearance = appearance
         case "dark":
-            appearance = NSAppearance(named: .darkAqua)
+            appearance = NSAppearance(named: .darkAqua) ?? .currentDrawing()
+                ?? NSApp.effectiveAppearance
             NSApp.appearance = appearance
         default:
             NSApp.appearance = nil
