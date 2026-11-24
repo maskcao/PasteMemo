@@ -205,7 +205,13 @@ struct NativeTextView: NSViewRepresentable {
             let box = await Task.detached(priority: .userInitiated) {
                 UnsafeSendableBox(Self.decode(data: dataLocal, type: typeLocal, plainText: text, maxImageWidth: widthLocal, isDark: isDark))
             }.value
-            guard let attr = box.value else { return }
+            guard let attr = box.value else {
+                // The plain fallback must never be keyed as if it were the decoded rich
+                // text: on the next width change the cache would resurrect the corrupt
+                // rendering.
+                RichTextCache.shared.markRejected(data: dataLocal)
+                return
+            }
             guard coordinator.isCurrentDecodeToken(token) else { return }
             // Selection changed meanwhile — discard.
             guard coordinator.lastRichTextData == dataLocal else { return }
@@ -237,7 +243,6 @@ struct NativeTextView: NSViewRepresentable {
         guard let raw, isRenderable(raw, plainText: plainText) else { return nil }
         // The plain fallback must never be keyed as if it were the decoded rich text:
         // on the next width change the cache would resurrect the corrupt rendering.
-        RichTextCache.shared.markRejected(data: data)
         let adapted = adaptColorsForAppearance(raw, isDark: isDark)
         return scaleAttachmentsToFit(adapted, maxWidth: maxImageWidth)
     }
