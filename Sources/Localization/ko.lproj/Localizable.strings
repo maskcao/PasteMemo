@@ -1270,16 +1270,6 @@
 
 // 长截图（对齐 FloGravity 截图模块）
 "capture.mode.screenshot" = "스크린샷";
-"capture.mode.long" = "긴 스크린샷";
-"capture.long.start" = "캡처 시작";
-"capture.long.finish" = "완료";
-"capture.long.autoscroll" = "자동 스크롤";
-"capture.long.capturing" = "페이지를 스크롤하면 자동으로 이어 붙습니다…";
-"capture.long.height" = "%lld px 연결됨";
-"capture.long.bottom" = "끝에 도달함 — 완료를 클릭하세요";
-"capture.long.copied" = "긴 스크린샷이 복사되었습니다";
-"capture.long.preview" = "긴 스크린샷 미리보기";
-"capture.long.failed" = "긴 스크린샷에 실패했습니다";
 
 // 截图主流程补齐（延时 / 二维码 / 比例约束 / 圆角矩形 / 最近选区）
 "editor.tool.roundedRect" = "둥근 사각형";

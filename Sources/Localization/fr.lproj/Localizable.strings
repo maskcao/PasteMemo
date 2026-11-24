@@ -1272,16 +1272,6 @@
 
 // 长截图（对齐 FloGravity 截图模块）
 "capture.mode.screenshot" = "Capture";
-"capture.mode.long" = "Capture longue";
-"capture.long.start" = "Démarrer la capture";
-"capture.long.finish" = "Terminer";
-"capture.long.autoscroll" = "Défilement automatique";
-"capture.long.capturing" = "Faites défiler la page — assemblage automatique…";
-"capture.long.height" = "%lld px assemblés";
-"capture.long.bottom" = "Bas de page atteint — cliquez sur Terminer";
-"capture.long.copied" = "Capture longue copiée";
-"capture.long.preview" = "Aperçu de la capture longue";
-"capture.long.failed" = "Échec de la capture longue";
 
 // 截图主流程补齐（延时 / 二维码 / 比例约束 / 圆角矩形 / 最近选区）
 "editor.tool.roundedRect" = "Rectangle arrondi";

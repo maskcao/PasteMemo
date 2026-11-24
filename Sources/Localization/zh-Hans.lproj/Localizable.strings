@@ -1218,16 +1218,6 @@
 
 // 长截图（对齐 FloGravity 截图模块）
 "capture.mode.screenshot" = "截图";
-"capture.mode.long" = "长截图";
-"capture.long.start" = "开始长截图";
-"capture.long.finish" = "完成";
-"capture.long.autoscroll" = "自动滚动";
-"capture.long.capturing" = "滚动页面，自动拼接中…";
-"capture.long.height" = "已拼接 %lld px";
-"capture.long.bottom" = "已滚动到底，点击完成生成";
-"capture.long.copied" = "长截图已复制";
-"capture.long.preview" = "长截图预览";
-"capture.long.failed" = "长截图失败";
 
 // 截图主流程补齐（延时 / 二维码 / 比例约束 / 圆角矩形 / 最近选区）
 "editor.tool.roundedRect" = "圆角矩形";

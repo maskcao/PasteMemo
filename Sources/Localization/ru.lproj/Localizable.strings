@@ -1242,16 +1242,6 @@
 
 // 长截图（对齐 FloGravity 截图模块）
 "capture.mode.screenshot" = "Снимок";
-"capture.mode.long" = "Длинный снимок";
-"capture.long.start" = "Начать съёмку";
-"capture.long.finish" = "Готово";
-"capture.long.autoscroll" = "Автопрокрутка";
-"capture.long.capturing" = "Прокручивайте страницу — склейка выполняется автоматически…";
-"capture.long.height" = "Склеено %lld px";
-"capture.long.bottom" = "Достигнут конец страницы — нажмите «Готово»";
-"capture.long.copied" = "Длинный снимок скопирован";
-"capture.long.preview" = "Предпросмотр длинного снимка";
-"capture.long.failed" = "Не удалось создать длинный снимок";
 
 // 截图主流程补齐（延时 / 二维码 / 比例约束 / 圆角矩形 / 最近选区）
 "editor.tool.roundedRect" = "Прямоугольник со скруглением";

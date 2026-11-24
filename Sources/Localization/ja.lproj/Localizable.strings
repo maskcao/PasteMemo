@@ -1268,16 +1268,6 @@
 
 // 长截图（对齐 FloGravity 截图模块）
 "capture.mode.screenshot" = "スクリーンショット";
-"capture.mode.long" = "長いスクリーンショット";
-"capture.long.start" = "撮影を開始";
-"capture.long.finish" = "完了";
-"capture.long.autoscroll" = "自動スクロール";
-"capture.long.capturing" = "ページをスクロールすると自動で連結します…";
-"capture.long.height" = "連結済み %lld px";
-"capture.long.bottom" = "一番下に到達 — 完了をクリック";
-"capture.long.copied" = "長いスクリーンショットをコピーしました";
-"capture.long.preview" = "長いスクリーンショットのプレビュー";
-"capture.long.failed" = "長いスクリーンショットに失敗しました";
 
 // 截图主流程补齐（延时 / 二维码 / 比例约束 / 圆角矩形 / 最近选区）
 "editor.tool.roundedRect" = "角丸長方形";

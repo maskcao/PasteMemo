@@ -1242,16 +1242,6 @@
 
 // 长截图（对齐 FloGravity 截图模块）
 "capture.mode.screenshot" = "Tangkapan Layar";
-"capture.mode.long" = "Tangkapan Panjang";
-"capture.long.start" = "Mulai Gulir";
-"capture.long.finish" = "Selesai";
-"capture.long.autoscroll" = "Gulir Otomatis";
-"capture.long.capturing" = "Gulir halaman — digabung otomatis…";
-"capture.long.height" = "%lld px digabung";
-"capture.long.bottom" = "Sampai bawah halaman — klik Selesai";
-"capture.long.copied" = "Tangkapan panjang disalin";
-"capture.long.preview" = "Pratinjau Tangkapan Panjang";
-"capture.long.failed" = "Tangkapan panjang gagal";
 
 // 截图主流程补齐（延时 / 二维码 / 比例约束 / 圆角矩形 / 最近选区）
 "editor.tool.roundedRect" = "Persegi Bulat";
