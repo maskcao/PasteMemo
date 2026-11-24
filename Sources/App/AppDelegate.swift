@@ -236,14 +236,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     static func applyAppearance(_ mode: String) {
+        let appearance: NSAppearance
         switch mode {
-        case "light": NSApp.appearance = NSAppearance(named: .aqua)
-        case "dark": NSApp.appearance = NSAppearance(named: .darkAqua)
-        default: NSApp.appearance = nil
+        case "light":
+            appearance = NSAppearance(named: .aqua)
+            NSApp.appearance = appearance
+        case "dark":
+            appearance = NSAppearance(named: .darkAqua)
+            NSApp.appearance = appearance
+        default:
+            NSApp.appearance = nil
+            appearance = NSApp.effectiveAppearance
         }
-        // 选区面板是 borderless + screenSaver 层，AppKit 的外观变化不保证传播到它
-        // （设置里切主题后截图工具条会停留在旧主题），这里主动刷新。
-        ScreenshotSelectionController.shared.refreshChromeAppearance()
+        // 选区面板是 borderless + screenSaver 层，AppKit 的外观变化不保证传播到它；
+        // 且刚赋值 NSApp.appearance 后同步读取 effectiveAppearance 仍可能是旧值，
+        // 所以把明确选中的主题直接传给截图 chrome，避免同一启动内残留旧主题。
+        ScreenshotSelectionController.shared.refreshChromeAppearance(with: appearance)
     }
 
 }

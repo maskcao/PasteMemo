@@ -45,6 +45,7 @@ final class ScreenshotSelectionController: NSObject {
 
     private var panels: [SelectionPanel] = []
     private(set) var isActive = false
+    private var chromeAppearance: NSAppearance = NSAppearance.current ?? NSApp.effectiveAppearance
 
     private var appearanceObserver: NSObjectProtocol?
 
@@ -63,10 +64,12 @@ final class ScreenshotSelectionController: NSObject {
     /// 把所有选区面板的外观强制对齐应用当前外观，并刷新悬浮 chrome。
     /// 面板是 borderless + screenSaver 层，NSApp.appearance 变化不保证传播到它
     /// （设置里切主题后工具条会停留在旧主题），直接改窗口 appearance 最可靠。
-    func refreshChromeAppearance() {
+    func refreshChromeAppearance(with appearance: NSAppearance? = nil) {
+        let targetAppearance = appearance ?? NSApp.effectiveAppearance
+        chromeAppearance = targetAppearance
         for panel in panels {
-            panel.appearance = NSApp.effectiveAppearance
-            (panel.contentView as? ScreenshotSelectionSurfaceView)?.refreshChromeForAppearance()
+            panel.appearance = targetAppearance
+            (panel.contentView as? ScreenshotSelectionSurfaceView)?.refreshChromeForAppearance(targetAppearance)
         }
     }
 
@@ -234,7 +237,7 @@ final class ScreenshotSelectionController: NSObject {
             // A panel created after a theme switch does not reliably inherit
             // NSApp.appearance. Pin it before it first appears, otherwise the
             // toolbar starts with the previous theme's material and icons.
-            appearance = NSApp.effectiveAppearance
+            appearance = owner?.chromeAppearance ?? NSApp.effectiveAppearance
             isOpaque = false
             backgroundColor = .clear
             hasShadow = false
@@ -485,12 +488,12 @@ final class ScreenshotSelectionSurfaceView: NSView {
     }
 
     /// 主题切换后刷新悬浮 chrome（工具条 + 二级面板）
-    func refreshChromeForAppearance() {
-        let appearance = NSApp.effectiveAppearance
-        toolbar?.appearance = appearance
-        optionsBar?.appearance = appearance
-        toolbar?.refreshForAppearance()
-        optionsBar?.refreshForAppearance()
+    func refreshChromeForAppearance(_ appearance: NSAppearance? = nil) {
+        let targetAppearance = appearance ?? NSApp.effectiveAppearance
+        toolbar?.appearance = targetAppearance
+        optionsBar?.appearance = targetAppearance
+        toolbar?.refreshForAppearance(targetAppearance)
+        optionsBar?.refreshForAppearance(targetAppearance)
     }
 
     private func positionToolbar() {
@@ -2594,8 +2597,9 @@ final class SelectionToolbar: NSVisualEffectView {
     /// 重新解析主题相关颜色并标记整树重绘。解析基准用 NSApp.effectiveAppearance：
     /// 面板外观可能没跟上应用外观（见 refreshChromeAppearance），按视图自己的
     /// effectiveAppearance 解析会继续用旧主题。
-    func refreshForAppearance() {
-        NSApp.effectiveAppearance.performAsCurrentDrawingAppearance {
+    func refreshForAppearance(_ appearance: NSAppearance? = nil) {
+        let targetAppearance = appearance ?? NSApp.effectiveAppearance
+        targetAppearance.performAsCurrentDrawingAppearance {
             chromeTintView.layer?.backgroundColor = Self.chromeTint.cgColor
             layer?.borderColor = NSColor.separatorColor.cgColor
         }
@@ -2742,8 +2746,9 @@ final class SelectionOptionsBar: NSVisualEffectView {
     }
 
     /// 同 SelectionToolbar：按应用当前外观重新解析，并标记整树重绘
-    func refreshForAppearance() {
-        NSApp.effectiveAppearance.performAsCurrentDrawingAppearance {
+    func refreshForAppearance(_ appearance: NSAppearance? = nil) {
+        let targetAppearance = appearance ?? NSApp.effectiveAppearance
+        targetAppearance.performAsCurrentDrawingAppearance {
             chromeTintView.layer?.backgroundColor = SelectionToolbar.chromeTint.cgColor
             layer?.borderColor = NSColor.separatorColor.cgColor
             // 字号芯片的底/边也是一次性解析的 layer 颜色，一并跟随新外观
