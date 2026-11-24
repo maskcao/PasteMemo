@@ -46,6 +46,30 @@ final class ScreenshotSelectionController: NSObject {
     private var panels: [SelectionPanel] = []
     private(set) var isActive = false
 
+    private var appearanceObserver: NSObjectProtocol?
+
+    override init() {
+        super.init()
+        // 外观设置为“跟随系统”时，系统切深浅色走的是系统级变化；用分布式通知兜底，
+        // 确保选区面板的 chrome 不依赖 AppKit 对这类面板的外观传播。
+        appearanceObserver = DistributedNotificationCenter.default.addObserver(
+            forName: NSNotification.Name("AppleInterfaceThemeChangedNotification"),
+            object: nil, queue: .main
+        ) { [weak self] _ in
+            self?.refreshChromeAppearance()
+        }
+    }
+
+    /// 把所有选区面板的外观强制对齐应用当前外观，并刷新悬浮 chrome。
+    /// 面板是 borderless + screenSaver 层，NSApp.appearance 变化不保证传播到它
+    /// （设置里切主题后工具条会停留在旧主题），直接改窗口 appearance 最可靠。
+    func refreshChromeAppearance() {
+        for panel in panels {
+            panel.appearance = NSApp.effectiveAppearance
+            (panel.contentView as? ScreenshotSelectionSurfaceView)?.refreshChromeForAppearance()
+        }
+    }
+
     /// 返回 false 表示冻结帧拿不到（无权限/显示错误），调用方应回退系统框选。
     @discardableResult
     func begin() -> Bool {
@@ -454,6 +478,12 @@ final class ScreenshotSelectionSurfaceView: NSView {
     override func layout() {
         super.layout()
         positionToolbar()
+    }
+
+    /// 主题切换后刷新悬浮 chrome（工具条 + 二级面板）
+    func refreshChromeForAppearance() {
+        toolbar?.refreshForAppearance()
+        optionsBar?.refreshForAppearance()
     }
 
     private func positionToolbar() {
@@ -2551,8 +2581,14 @@ final class SelectionToolbar: NSVisualEffectView {
 
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
-        // 系统切换深浅色时，layer 里的 CGColor 不会自动更新，这里重新解析
-        effectiveAppearance.performAsCurrentDrawingAppearance {
+        refreshForAppearance()
+    }
+
+    /// 重新解析主题相关颜色并标记整树重绘。解析基准用 NSApp.effectiveAppearance：
+    /// 面板外观可能没跟上应用外观（见 refreshChromeAppearance），按视图自己的
+    /// effectiveAppearance 解析会继续用旧主题。
+    func refreshForAppearance() {
+        NSApp.effectiveAppearance.performAsCurrentDrawingAppearance {
             chromeTintView.layer?.backgroundColor = Self.chromeTint.cgColor
             layer?.borderColor = NSColor.separatorColor.cgColor
         }
@@ -2695,14 +2731,18 @@ final class SelectionOptionsBar: NSVisualEffectView {
 
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
-        effectiveAppearance.performAsCurrentDrawingAppearance {
+        refreshForAppearance()
+    }
+
+    /// 同 SelectionToolbar：按应用当前外观重新解析，并标记整树重绘
+    func refreshForAppearance() {
+        NSApp.effectiveAppearance.performAsCurrentDrawingAppearance {
             chromeTintView.layer?.backgroundColor = SelectionToolbar.chromeTint.cgColor
             layer?.borderColor = NSColor.separatorColor.cgColor
             // 字号芯片的底/边也是一次性解析的 layer 颜色，一并跟随新外观
             sizeChip?.layer?.backgroundColor = NSColor.controlBackgroundColor.cgColor
             sizeChip?.layer?.borderColor = NSColor.separatorColor.cgColor
         }
-        // 同主工具条：自定义绘制的按钮/分隔线需要显式标记重绘
         invalidateDisplayRecursively()
     }
 

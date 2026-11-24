@@ -241,6 +241,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case "dark": NSApp.appearance = NSAppearance(named: .darkAqua)
         default: NSApp.appearance = nil
         }
+        // 选区面板是 borderless + screenSaver 层，AppKit 的外观变化不保证传播到它
+        // （设置里切主题后截图工具条会停留在旧主题），这里主动刷新。
+        ScreenshotSelectionController.shared.refreshChromeAppearance()
     }
 
 }
