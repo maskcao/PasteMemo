@@ -133,4 +133,27 @@ struct RichTextRenderabilityTests {
         let body = String(repeating: "id: CVE-2022-34487\n", count: 50) + "?"
         #expect(NativeTextView.isRenderable(attributed(body), plainText: body))
     }
+
+    @Test("正文正常但中间夹着大片解码问号 → 否决")
+    func longQuestionMarkRunInsideMostlyIntactTextRejected() {
+        let decoded = attributed(
+            "id: CVE-2022-34487\n"
+                + String(repeating: "?", count: 64) + "\n"
+                + "info: Shortcode Addons\n"
+                + String(repeating: "normal text\n", count: 60)
+        )
+        let plain = "id: CVE-2022-34487\n"
+            + String(repeating: "中文字符\n", count: 64)
+            + "info: Shortcode Addons\n"
+            + String(repeating: "normal text\n", count: 60)
+        #expect(!NativeTextView.isRenderable(decoded, plainText: plain))
+    }
+
+    @Test("原文本身有相近长度的问号串 → 放行")
+    func longQuestionMarkRunWithMatchingPlainTextPasses() {
+        let questionMarks = String(repeating: "?", count: 64)
+        let decoded = attributed(questionMarks + "\nnormal text")
+        let plain = questionMarks + "\nnormal text"
+        #expect(NativeTextView.isRenderable(decoded, plainText: plain))
+    }
 }

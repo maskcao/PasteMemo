@@ -247,6 +247,12 @@ struct NativeTextView: NSViewRepresentable {
     nonisolated private static let lossyRateFloor = 0.15    // 解码结果里 "?" 至少占这个比例
     nonisolated private static let lossyRateGap = 0.10      // 且要显著高于原文里的 "?" 占比
     nonisolated private static let plainScanLimit = 20_000  // 原文只扫前缀估占比
+    /// 连续坏字符的独立判据。有些 payload 混入大量正常字符后，总占比可能低于
+    /// 上面的比例线，但预览里仍会看到成片 "?????"。富文本解码不应无中生有地
+    /// 造出长问号串；原文没有对应的连续问号时，这样的结果直接否决。
+    nonisolated private static let lossyRunFloor = 8
+    nonisolated private static let lossyRunTolerance = 2
+    nonisolated private static let lossyScanLimit = 50_000
 
     /// 解码结果是否值得拿来替换纯文本渲染。
     ///
@@ -266,6 +272,8 @@ struct NativeTextView: NSViewRepresentable {
         var visible = 0
         var unrenderable = 0
         var lossy = 0
+        var currentLossyRun = 0
+        var maxLossyRun = 0
         for scalar in attributed.string.unicodeScalars {
             // 空白、控制字符、图片占位符不参与判断
             if scalar.value < 0x20 || scalar.value == 0xFFFC || scalar.properties.isWhitespace { continue }
@@ -280,18 +288,53 @@ struct NativeTextView: NSViewRepresentable {
             if scalar.value == 0xFFFD {
                 unrenderable += 1
                 lossy += 1
+                currentLossyRun += 1
+                maxLossyRun = max(maxLossyRun, currentLossyRun)
             } else if scalar.value == 0x3F {
                 lossy += 1
+                currentLossyRun += 1
+                maxLossyRun = max(maxLossyRun, currentLossyRun)
+            } else {
+                currentLossyRun = 0
             }
-            if visible >= renderabilityScanLimit { break }
+            if visible >= min(renderabilityScanLimit, lossyScanLimit) { break }
         }
         guard visible > 0 else { return true }
         if unrenderable * 2 >= visible { return false }
+        if let plainText,
+           hasUnexplainedLossyRun(maxLossyRun, plainText: plainText) {
+            return false
+        }
         if let plainText,
            decodedTextLostCharacters(decodedVisible: visible, decodedLossy: lossy, plainText: plainText) {
             return false
         }
         return true
+    }
+
+    /// 富文本解码后出现长串 "?" / U+FFFD，而原文没有相近长度的问号串时，
+    /// 认定这些字符是解码丢字产生的，而不是用户复制的内容本身。
+    nonisolated private static func hasUnexplainedLossyRun(_ decodedRun: Int, plainText: String) -> Bool {
+        guard decodedRun >= lossyRunFloor else { return false }
+        return decodedRun > maxLossyRun(in: plainText) + lossyRunTolerance
+    }
+
+    private typealias LossyRun = (maxRun: Int, currentRun: Int)
+
+    nonisolated private static func maxLossyRun(in text: String) -> Int {
+        var result: LossyRun = (0, 0)
+        var seen = 0
+        for scalar in text.unicodeScalars {
+            seen += 1
+            if scalar.value == 0x3F || scalar.value == 0xFFFD {
+                result.currentRun += 1
+                result.maxRun = max(result.maxRun, result.currentRun)
+            } else {
+                result.currentRun = 0
+            }
+            if seen >= plainScanLimit { break }
+        }
+        return result.maxRun
     }
 
     /// 丢字符判定的对比端：解码结果的 "?" 占比要有绝对数量兜底（防 "What?" 这类
