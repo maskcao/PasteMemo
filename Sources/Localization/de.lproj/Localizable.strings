@@ -271,6 +271,7 @@
 "capture.long.finish" = "Fertig";
 "capture.long.autoscroll" = "Automatisch scrollen";
 "capture.long.capturing" = "Seite scrollen – wird automatisch zusammengefügt…";
+"capture.long.hint" = "Fenster nach oben/unten scrollen (oder „Automatisch scrollen“ aktivieren, benötigt Barrierefreiheit). Fertig: Eingabe, Abbrechen: Esc.";
 "capture.long.height" = "%lld px zusammengefügt";
 "capture.long.bottom" = "Seitenende erreicht – auf „Fertig“ klicken";
 "capture.long.copied" = "Langbild-Screenshot kopiert";

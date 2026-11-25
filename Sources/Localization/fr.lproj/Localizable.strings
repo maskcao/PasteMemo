@@ -271,6 +271,7 @@
 "capture.long.finish" = "Terminer";
 "capture.long.autoscroll" = "Défilement automatique";
 "capture.long.capturing" = "Faites défiler la page — assemblage automatique…";
+"capture.long.hint" = "Faites défiler la fenêtre cible (ou activez le défilement auto, autorisation d’accessibilité requise). ⏎ pour finir, Échap pour annuler.";
 "capture.long.height" = "%lld px assemblés";
 "capture.long.bottom" = "Bas de page atteint — cliquez sur Terminer";
 "capture.long.copied" = "Capture longue copiée";

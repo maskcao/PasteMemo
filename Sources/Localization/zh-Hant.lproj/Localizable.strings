@@ -193,6 +193,7 @@
 "capture.long.finish" = "完成";
 "capture.long.autoscroll" = "自動捲動";
 "capture.long.capturing" = "捲動頁面，自動拼接中…";
+"capture.long.hint" = "在目標視窗捲動頁面（可勾選「自動捲動」，需輔助功能權限）。⏎ 完成，Esc 取消。";
 "capture.long.height" = "已拼接 %lld px";
 "capture.long.bottom" = "已捲動到底，點擊完成生成";
 "capture.long.copied" = "長截圖已複製";

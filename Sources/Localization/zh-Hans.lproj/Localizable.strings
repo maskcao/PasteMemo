@@ -204,6 +204,7 @@
 "capture.long.finish" = "完成";
 "capture.long.autoscroll" = "自动滚动";
 "capture.long.capturing" = "滚动页面，自动拼接中…";
+"capture.long.hint" = "在目标窗口滚动页面（可勾选“自动滚动”，需辅助功能权限）。⏎ 完成，Esc 取消。";
 "capture.long.height" = "已拼接 %lld px";
 "capture.long.bottom" = "已滚动到底，点击完成生成";
 "capture.long.copied" = "长截图已复制";

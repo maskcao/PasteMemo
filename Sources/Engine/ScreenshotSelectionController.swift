@@ -4024,11 +4024,17 @@ final class LongCaptureHUD: NSPanel {
         finishButton.keyEquivalent = "\r"
         finishButton.controlSize = .small
         finishButton.font = .systemFont(ofSize: 12, weight: .medium)
+        finishButton.toolTip = "⏎"
 
         let cancelButton = NSButton(title: L10n.tr("action.cancel"), target: nil, action: nil)
         cancelButton.bezelStyle = .rounded
         cancelButton.controlSize = .small
         cancelButton.font = .systemFont(ofSize: 12)
+        cancelButton.toolTip = "Esc"
+
+        let hintLabel = NSTextField(labelWithString: L10n.tr("capture.long.hint"))
+        hintLabel.font = .systemFont(ofSize: 10)
+        hintLabel.textColor = NSColor(white: 0.45, alpha: 1)
 
         let effect = NSVisualEffectView()
         effect.material = .popover
@@ -4043,13 +4049,19 @@ final class LongCaptureHUD: NSPanel {
         tint.wantsLayer = true
         tint.layer?.backgroundColor = NSColor(white: 1, alpha: 0.72).cgColor
 
-        let stack = NSStackView(views: [statusLabel, autoscrollButton, finishButton, cancelButton])
-        stack.orientation = .horizontal
-        stack.alignment = .centerY
-        stack.spacing = 10
-        stack.edgeInsets = NSEdgeInsets(top: 8, left: 14, bottom: 8, right: 14)
+        let mainRow = NSStackView(views: [statusLabel, autoscrollButton, finishButton, cancelButton])
+        mainRow.orientation = .horizontal
+        mainRow.alignment = .centerY
+        mainRow.spacing = 10
+        mainRow.edgeInsets = NSEdgeInsets(top: 8, left: 14, bottom: 0, right: 14)
         statusLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         statusLabel.setContentHuggingPriority(.defaultLow, for: .horizontal)
+
+        let stack = NSStackView(views: [mainRow, hintLabel])
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 2
+        stack.edgeInsets = NSEdgeInsets(top: 0, left: 14, bottom: 8, right: 14)
 
         let container = NSView()
         container.translatesAutoresizingMaskIntoConstraints = false
@@ -4060,7 +4072,7 @@ final class LongCaptureHUD: NSPanel {
         container.addSubview(effect)
 
         super.init(
-            contentRect: NSRect(x: 0, y: 0, width: 380, height: 52),
+            contentRect: NSRect(x: 0, y: 0, width: 380, height: 66),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered, defer: false
         )
@@ -4082,10 +4094,10 @@ final class LongCaptureHUD: NSPanel {
             tint.leadingAnchor.constraint(equalTo: effect.leadingAnchor),
             tint.trailingAnchor.constraint(equalTo: effect.trailingAnchor),
 
-            stack.topAnchor.constraint(equalTo: effect.topAnchor, constant: 8),
-            stack.bottomAnchor.constraint(equalTo: effect.bottomAnchor, constant: -8),
-            stack.leadingAnchor.constraint(equalTo: effect.leadingAnchor, constant: 14),
-            stack.trailingAnchor.constraint(equalTo: effect.trailingAnchor, constant: -14),
+            stack.topAnchor.constraint(equalTo: effect.topAnchor, constant: 0),
+            stack.bottomAnchor.constraint(equalTo: effect.bottomAnchor, constant: 0),
+            stack.leadingAnchor.constraint(equalTo: effect.leadingAnchor, constant: 0),
+            stack.trailingAnchor.constraint(equalTo: effect.trailingAnchor, constant: 0),
         ])
 
         // 目标回调（NSButton target 需要 target-action；用辅助闭包持有）
@@ -4101,7 +4113,7 @@ final class LongCaptureHUD: NSPanel {
 
         // 位置：优先捕获区域正上方；放不下则放区域下方（始终在捕获区域外，不会入镜）
         let width: CGFloat = 380
-        let height: CGFloat = 52
+        let height: CGFloat = 66
         let gap: CGFloat = 12
         let visibleTop = screen.frame.maxY
         let visibleBottom = screen.frame.minY

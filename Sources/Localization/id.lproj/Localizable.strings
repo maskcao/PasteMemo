@@ -194,6 +194,7 @@
 "capture.long.finish" = "Selesai";
 "capture.long.autoscroll" = "Gulir Otomatis";
 "capture.long.capturing" = "Gulir halaman — digabung otomatis…";
+"capture.long.hint" = "Gulirkan jendela target (atau aktifkan Gulir Otomatis, butuh izin Aksesibilitas). Selesai dengan Enter, batal dengan Esc.";
 "capture.long.height" = "%lld px digabung";
 "capture.long.bottom" = "Sampai bawah halaman — klik Selesai";
 "capture.long.copied" = "Tangkapan panjang disalin";

@@ -279,6 +279,7 @@
 "capture.long.finish" = "完了";
 "capture.long.autoscroll" = "自動スクロール";
 "capture.long.capturing" = "ページをスクロールすると自動で連結します…";
+"capture.long.hint" = "対象のウィンドウをスクロールします（「自動スクロール」にはアクセシビリティ権限が必要です）。完了は Enter、キャンセルは Esc。";
 "capture.long.height" = "連結済み %lld px";
 "capture.long.bottom" = "一番下に到達 — 完了をクリック";
 "capture.long.copied" = "長いスクリーンショットをコピーしました";

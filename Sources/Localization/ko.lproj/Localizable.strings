@@ -271,6 +271,7 @@
 "capture.long.finish" = "완료";
 "capture.long.autoscroll" = "자동 스크롤";
 "capture.long.capturing" = "페이지를 스크롤하면 자동으로 이어 붙습니다…";
+"capture.long.hint" = "대상 창을 스크롤하세요(자동 스크롤하려면 접근성 권한 필요). 완료는 Enter, 취소는 Esc.";
 "capture.long.height" = "%lld px 연결됨";
 "capture.long.bottom" = "끝에 도달함 — 완료를 클릭하세요";
 "capture.long.copied" = "긴 스크린샷이 복사되었습니다";

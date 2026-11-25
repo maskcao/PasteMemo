@@ -194,6 +194,7 @@
 "capture.long.finish" = "Готово";
 "capture.long.autoscroll" = "Автопрокрутка";
 "capture.long.capturing" = "Прокручивайте страницу — склейка выполняется автоматически…";
+"capture.long.hint" = "Прокручивайте нужное окно (или включите автопрокрутку, нужны права доступности). Готово — Enter, отмена — Esc.";
 "capture.long.height" = "Склеено %lld px";
 "capture.long.bottom" = "Достигнут конец страницы — нажмите «Готово»";
 "capture.long.copied" = "Длинный снимок скопирован";

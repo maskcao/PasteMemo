@@ -271,6 +271,7 @@
 "capture.long.finish" = "Terminar";
 "capture.long.autoscroll" = "Desplazamiento automático";
 "capture.long.capturing" = "Desplaza la página: se unirá automáticamente…";
+"capture.long.hint" = "Desplaza la ventana destino (o activa el desplazamiento automático, requiere Accesibilidad). Finaliza con Intro, cancela con Esc.";
 "capture.long.height" = "%lld px unidos";
 "capture.long.bottom" = "Fin de página alcanzado: pulsa Terminar";
 "capture.long.copied" = "Captura larga copiada";

@@ -204,6 +204,7 @@
 "capture.long.finish" = "Finish";
 "capture.long.autoscroll" = "Auto-scroll";
 "capture.long.capturing" = "Scroll the page — stitching automatically…";
+"capture.long.hint" = "Scroll the target window (or enable Auto-scroll, needs Accessibility). Finish with Enter, cancel with Esc.";
 "capture.long.height" = "Stitched %lld px";
 "capture.long.bottom" = "Reached the bottom — click Finish";
 "capture.long.copied" = "Long screenshot copied";

@@ -194,6 +194,7 @@
 "capture.long.finish" = "Fine";
 "capture.long.autoscroll" = "Scorrimento automatico";
 "capture.long.capturing" = "Scorri la pagina: l'unione è automatica…";
+"capture.long.hint" = "Fai scorrere la finestra di destinazione (o attiva “Scorrimento automatico”, richiede l’accesso in modalità assistita). Fine con Invio, annulla con Esc.";
 "capture.long.height" = "%lld px uniti";
 "capture.long.bottom" = "Fine pagina raggiunta — premi Fine";
 "capture.long.copied" = "Istantanea lunga copiata";
