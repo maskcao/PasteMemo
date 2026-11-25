@@ -4155,12 +4155,10 @@ final class LongCaptureHUD: NSPanel {
         captureBar = NSStackView(views: [autoscrollButton, finishButton, cancelCaptureButton])
         captureBar.orientation = .horizontal
         captureBar.spacing = 10
-        captureBar.huggingPriority = .required
 
         resultBar = NSStackView(views: [editButton, saveButton, cancelResultButton, confirmButton])
         resultBar.orientation = .horizontal
         resultBar.spacing = 10
-        resultBar.huggingPriority = .required
         resultBar.isHidden = true
 
         // 纵向：状态行 → 预览 → 按钮行（两行按钮互斥显示，面板高度不变）
@@ -4211,8 +4209,8 @@ final class LongCaptureHUD: NSPanel {
 
             scrollView.widthAnchor.constraint(equalToConstant: previewWidth),
             scrollView.heightAnchor.constraint(equalToConstant: 300),
-            scrollView.setContentHuggingPriority(.defaultLow, for: .horizontal)
         ])
+        scrollView.setContentHuggingPriority(.defaultLow, for: .horizontal)
         contentView = container
 
         let target = ClosureTarget.shared
@@ -4244,11 +4242,6 @@ final class LongCaptureHUD: NSPanel {
 
     override var canBecomeKey: Bool { true }
 
-    override func viewDidChangeEffectiveAppearance() {
-        super.viewDidChangeEffectiveAppearance()
-        backgroundView.appearance = NSApp.effectiveAppearance
-    }
-
     /// 贴在选区右侧；放不下翻到左侧；垂直方向贴选区顶部对齐
     private func position(near region: CGRect, on screen: NSScreen) {
         let panelSize = frame.size
@@ -4272,6 +4265,7 @@ final class LongCaptureHUD: NSPanel {
     }
 
     func showPanel() {
+        backgroundView.appearance = NSApp.effectiveAppearance
         makeKeyAndOrderFront(nil)
         ClosureTarget.shared.panel = self
     }
@@ -4289,7 +4283,6 @@ final class LongCaptureHUD: NSPanel {
         imageView.image = preview
         imageView.frame = NSRect(x: 0, y: 0, width: previewWidth, height: displayHeight)
         scrollView.contentView.scroll(to: imageView.bounds.origin)
-        scrollView.contentView.reflectScrollers()
     }
 
     /// 完成：切到结果模式，预览显示最终长图，按钮换为 编辑/保存/取消/确定
