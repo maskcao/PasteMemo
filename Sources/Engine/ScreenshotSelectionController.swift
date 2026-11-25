@@ -50,6 +50,10 @@ final class ScreenshotSelectionController: NSObject {
     private var panels: [SelectionPanel] = []
     private(set) var isActive = false
     private var chromeAppearance: NSAppearance = NSAppearance.current ?? NSApp.effectiveAppearance
+    /// 热键唤起前最前台的应用。截图会话必须把自己激活到最前（全屏浮层 + key window），
+    /// 结束时会把焦点还给它——RDP 客户端这类全屏应用在失活期间不转发鼠标事件，
+    /// 不还焦点就表现为「截图后远程主机里的按钮点不动」。
+    private var restoredApp: NSRunningApplication?
 
     private var appearanceObserver: NSObjectProtocol?
 
@@ -101,6 +105,8 @@ final class ScreenshotSelectionController: NSObject {
         let windows = ScreenshotSelectionSurfaceView.captureWindowList()
 
         isActive = true
+        // 记录「之前是谁在前台」：begin() 会把自己激活，closeAll 收尾时还回去
+        restoredApp = NSWorkspace.shared.frontmostApplication
         let hideDock = UserDefaults.standard.bool(forKey: "hideDockIcon")
         if !hideDock {
             NSApp.setActivationPolicy(.accessory)
@@ -210,6 +216,13 @@ final class ScreenshotSelectionController: NSObject {
         if !UserDefaults.standard.bool(forKey: "hideDockIcon") {
             NSApp.setActivationPolicy(.regular)
         }
+        // 把焦点还给截图前的应用（本应用自身除外）：
+        // RDP 客户端失活期间鼠标事件不会进远端会话，这是「截图后远程主机点不动」的根因
+        if let app = restoredApp,
+           app.processIdentifier != NSRunningApplication.current.processIdentifier {
+            app.activate(from: nil, options: [.activateAllWindows])
+        }
+        restoredApp = nil
     }
 
     // MARK: - Panel
