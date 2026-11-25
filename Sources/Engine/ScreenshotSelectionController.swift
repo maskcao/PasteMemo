@@ -14,6 +14,8 @@ final class LongCaptureSessionState {
     var keyMonitor: Any?
     /// 连续无新增内容的帧数，达到阈值提示「已滚动到底」
     var noAddStreak = 0
+    /// 最近一次预览图：没有新增内容时直接复用，避免每 tick 都重建整张长图
+    var lastPreview: NSImage?
 
     init(stitcher: LongScreenshotStitcher, pixelRect: CGRect) {
         self.stitcher = stitcher
@@ -1232,10 +1234,9 @@ final class ScreenshotSelectionSurfaceView: NSView {
         session.hud = hud
         longCapturePanel = hud
         // 首帧立即进预览，不用等第一次拼接 tick（0.35s 后）才看到画面
-        session.hud?.updateCapture(
-            height: 0, atBottom: false,
-            preview: NSImage(cgImage: first, size: NSSize(width: first.width, height: first.height))
-        )
+        let firstPreview = NSImage(cgImage: first, size: NSSize(width: first.width, height: first.height))
+        session.lastPreview = firstPreview
+        session.hud?.updateCapture(height: 0, atBottom: false, preview: firstPreview)
 
         // 全局按键监听：焦点切到目标窗口滚动时 HUD 不再是键窗，
         // Esc / 回车的本地 keyDown 收不到——全局监听兜底，任何位置都能停
@@ -1267,10 +1268,17 @@ final class ScreenshotSelectionSurfaceView: NSView {
         } else {
             session.noAddStreak = 0
         }
-        let atBottom = session.noAddStreak >= 4
-        // 每次拼接后把当前长图喂给旁边的预览，滚到哪看到哪
-        let preview: NSImage? = session.stitcher.makeImage().map {
-            NSImage(cgImage: $0, size: NSSize(width: $0.width, height: $0.height))
+        // 长时间（≈3.5s）没有新内容才提示到底：手动滚动稍作停顿不该误报
+        let atBottom = session.noAddStreak >= 10
+        // 只有真正新增内容才重建整张画布（makeImage 随长图变重），否则复用上一张预览
+        let preview: NSImage?
+        if result.addedRows > 0 {
+            preview = session.stitcher.makeImage().map {
+                NSImage(cgImage: $0, size: NSSize(width: $0.width, height: $0.height))
+            }
+            session.lastPreview = preview
+        } else {
+            preview = session.lastPreview
         }
         session.hud?.updateCapture(height: result.totalRows, atBottom: atBottom, preview: preview)
         if autoScrollEnabled, !atBottom {
@@ -4086,7 +4094,12 @@ private extension CGRect {
 /// 右侧按钮区在「捕获中 → 完成」两个阶段间切换。
 @MainActor
 final class LongCaptureHUD: NSPanel {
-    private let imageView = NSImageView()
+    /// 翻转文档视图：y=0 在顶部，长图向下增长；滚到底部 = 看到最新拼接的内容
+    private final class FlippedImageView: NSImageView {
+        override var isFlipped: Bool { true }
+    }
+
+    private let imageView = FlippedImageView()
     private let scrollView = NSScrollView()
     private let backgroundView: NSVisualEffectView
     private let statusLabel: NSTextField
@@ -4185,7 +4198,9 @@ final class LongCaptureHUD: NSPanel {
             backing: .buffered, defer: false
         )
         level = .screenSaver
-        isOpaque = true
+        // 必须非不透明 + 清底色，behindWindow 视觉特效才能采样到面板背后的实时画面；
+        // 之前 isOpaque=true 时材质采样失败，整块渲染成灰白（文字看不清的根因）
+        isOpaque = false
         backgroundColor = .clear
         hasShadow = true
         hidesOnDeactivate = false
@@ -4242,7 +4257,9 @@ final class LongCaptureHUD: NSPanel {
 
     override var canBecomeKey: Bool { true }
 
-    /// 贴在选区右侧；放不下翻到左侧；垂直方向贴选区顶部对齐
+    /// 贴在选区旁边，优先「右侧顶部对齐 → 左侧顶部对齐 → 下方 → 上方」，
+    /// 取第一个与选区不重叠且在屏内的位置。
+    /// 关键：面板绝不能盖住选区——抓帧走 CGDisplayCreateImage，压到选区会把面板本身拼进长图。
     private func position(near region: CGRect, on screen: NSScreen) {
         let panelSize = frame.size
         let screenFrame = screen.visibleFrame
@@ -4253,15 +4270,28 @@ final class LongCaptureHUD: NSPanel {
             width: region.width, height: region.height
         )
         let gap: CGFloat = 16
-        var originX = regionInScreen.maxX + gap
-        if originX + panelSize.width > screenFrame.maxX - 8 {
-            originX = max(screenFrame.minX + 8, regionInScreen.minX - gap - panelSize.width)
+        func fitY(_ y: CGFloat) -> CGFloat {
+            max(screenFrame.minY + 4, min(y, screenFrame.maxY - panelSize.height - 4))
         }
-        // 垂直方向对选区中心：面板和选区同高站位，滚动时不遮挡选区本身
-        let regionMidY = screen.frame.maxY - (region.minY + region.maxY) / 2
-        var originY = regionMidY - panelSize.height / 2
-        originY = max(screenFrame.minY + 8, min(originY, screenFrame.maxY - panelSize.height - 8))
-        setFrameOrigin(NSPoint(x: originX, y: originY))
+        let topY = fitY(regionInScreen.minY)
+        let candidates: [NSPoint] = [
+            // 右侧，顶部对齐
+            NSPoint(x: min(regionInScreen.maxX + gap, screenFrame.maxX - panelSize.width - 4), y: topY),
+            // 左侧，顶部对齐
+            NSPoint(x: max(screenFrame.minX + 4, regionInScreen.minX - gap - panelSize.width), y: topY),
+            // 选区下方
+            NSPoint(x: max(screenFrame.minX + 4, min(regionInScreen.minX, screenFrame.maxX - panelSize.width - 4)),
+                    y: fitY(regionInScreen.maxY + gap)),
+            // 选区上方
+            NSPoint(x: max(screenFrame.minX + 4, min(regionInScreen.minX, screenFrame.maxX - panelSize.width - 4)),
+                    y: fitY(regionInScreen.minY - gap - panelSize.height))
+        ]
+        // 取第一个与选区不相交的位置；都相交时退回右侧钳制位置（至少不进一步恶化）
+        let chosen = candidates.first { candidate in
+            let frameRect = CGRect(origin: candidate, size: panelSize)
+            return !frameRect.intersects(regionInScreen.insetBy(dx: -2, dy: -2))
+        } ?? candidates[0]
+        setFrameOrigin(chosen)
     }
 
     func showPanel() {
@@ -4282,7 +4312,8 @@ final class LongCaptureHUD: NSPanel {
         let displayHeight = max(1, preview.size.height * previewWidth / max(preview.size.width, 1))
         imageView.image = preview
         imageView.frame = NSRect(x: 0, y: 0, width: previewWidth, height: displayHeight)
-        scrollView.contentView.scroll(to: imageView.bounds.origin)
+        // 翻转坐标系：滚到「底部」才是最新拼接的内容（之前滚 origin 永远停在顶部/空白）
+        scrollView.contentView.scroll(to: NSPoint(x: 0, y: max(0, displayHeight - scrollView.contentSize.height)))
     }
 
     /// 完成：切到结果模式，预览显示最终长图，按钮换为 编辑/保存/取消/确定
