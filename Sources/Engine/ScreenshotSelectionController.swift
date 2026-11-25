@@ -302,6 +302,8 @@ final class ScreenshotSelectionSurfaceView: NSView {
     /// 滚动截图进行中的会话状态；非 nil 表示正在滚动捕获
     var longSession: LongCaptureSessionState?
     private var autoScrollEnabled = false
+    /// 结果模式下的伴随面板（捕获完成后保留展示，直到复制/关闭）
+    private var longCapturePanel: LongCaptureHUD?
 
     /// 形状按钮记住上一次选的形状（矩形/椭圆），面板里的下拉也能改。
     private var shapeKind: ScreenshotAnnotation.Kind = .rectangle
@@ -1214,10 +1216,21 @@ final class ScreenshotSelectionSurfaceView: NSView {
             regionRect: sel, screen: screen,
             onFinish: { [weak self] in self?.finishLongCapture() },
             onCancel: { [weak self] in self?.cancelLongCapture() },
-            onAutoscroll: { [weak self] enabled in self?.autoScrollEnabled = enabled }
+            onAutoscroll: { [weak self] enabled in self?.autoScrollEnabled = enabled },
+            onEdit: { [weak self] pngData in
+                self?.longCapturePanel?.orderOut(nil)
+                self?.longCapturePanel = nil
+                ScreenshotEditorWindowController.present(imageData: pngData)
+            },
+            onConfirm: { [weak self] pngData in
+                self?.longCapturePanel?.orderOut(nil)
+                self?.longCapturePanel = nil
+                self?.copyLongCaptureToClipboard(pngData)
+            }
         )
         hud.showPanel()
         session.hud = hud
+        longCapturePanel = hud
 
         // 全局按键监听：焦点切到目标窗口滚动时 HUD 不再是键窗，
         // Esc / 回车的本地 keyDown 收不到——全局监听兜底，任何位置都能停
@@ -1250,7 +1263,11 @@ final class ScreenshotSelectionSurfaceView: NSView {
             session.noAddStreak = 0
         }
         let atBottom = session.noAddStreak >= 4
-        session.hud?.update(height: result.totalRows, atBottom: atBottom)
+        // 每次拼接后把当前长图喂给旁边的预览，滚到哪看到哪
+        let preview: NSImage? = session.stitcher.makeImage().map {
+            NSImage(cgImage: $0, size: NSSize(width: $0.width, height: $0.height))
+        }
+        session.hud?.updateCapture(height: result.totalRows, atBottom: atBottom, preview: preview)
         if autoScrollEnabled, !atBottom {
             postScrollTick()
         }
@@ -1267,21 +1284,37 @@ final class ScreenshotSelectionSurfaceView: NSView {
 
     private func finishLongCapture() {
         guard let session = longSession else { return }
-        teardownLongSession()
-        owner?.setPanelsHidden(false)
         guard let image = session.stitcher.makeImage(),
               let png = NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:]) else {
             showChip(L10n.tr("capture.long.failed"))
+            cancelLongCapture()
             return
         }
-        owner?.finishLongSession()
-        LongCapturePreview.present(pngData: png)
+        // 停掉滚动拼接的收尾（定时器 / 全局监听），但保留面板切到结果模式
+        session.stopTimer()
+        session.removeKeyMonitor()
+        longSession = nil
+        owner?.setPanelsHidden(false)
+        longCapturePanel?.showResult(
+            pngData: png,
+            image: NSImage(cgImage: image, size: NSSize(width: image.width, height: image.height))
+        )
+    }
+
+    /// 结果面板「确定」：长图复制进剪贴板，照常被捕获成历史条目
+    private func copyLongCaptureToClipboard(_ pngData: Data) {
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setData(pngData, forType: .png)
+        ToastCenter.shared.show(ToastDescriptor(message: L10n.tr("capture.long.copied"), icon: .success))
     }
 
     private func cancelLongCapture() {
         guard longSession != nil else { return }
         teardownLongSession()
         owner?.setPanelsHidden(false)
+        longCapturePanel?.orderOut(nil)
+        longCapturePanel = nil
         needsDisplay = true
     }
 
@@ -4044,49 +4077,101 @@ private extension CGRect {
         CGRect(x: minX + dx, y: minY + dy, width: width, height: height)
     }
 }
+/// 长截图伴随面板：贴在选区旁边，左侧实时预览随滚动增长，
+/// 右侧按钮区在「捕获中 → 完成」两个阶段间切换。
+@MainActor
 final class LongCaptureHUD: NSPanel {
+    private let imageView = NSImageView()
     private let statusLabel: NSTextField
+    private let hintLabel: NSTextField
+
+    // 捕获中按钮
     private let autoscrollButton: NSButton
+    private let finishButton: NSButton
+    private let cancelCaptureButton: NSButton
+    // 结果按钮
+    private let editButton: NSButton
+    private let saveButton: NSButton
+    private let confirmButton: NSButton
+    private let cancelResultButton: NSButton
+    private var resultBar: NSStackView
+    private var captureBar: NSStackView
+
+    /// 结果模式持有完成后的长图，四个按钮共用
+    private var resultPNG: Data?
 
     init(
         regionRect: CGRect, screen: NSScreen,
         onFinish: @escaping () -> Void,
         onCancel: @escaping () -> Void,
-        onAutoscroll: @escaping (Bool) -> Void
+        onAutoscroll: @escaping (Bool) -> Void,
+        onEdit: @escaping (Data) -> Void,
+        onConfirm: @escaping (Data) -> Void
     ) {
-        // 红色录制点：面板被藏起来后这是「正在长截图」最显眼的信号
-        let recordingDot = NSView()
-        recordingDot.wantsLayer = true
-        recordingDot.layer?.backgroundColor = NSColor.systemRed.cgColor
-        recordingDot.layer?.cornerRadius = 5
-        recordingDot.layer?.masksToBounds = true
-        recordingDot.translatesAutoresizingMaskIntoConstraints = false
-        recordingDot.heightAnchor.constraint(equalToConstant: 10).isActive = true
-        recordingDot.widthAnchor.constraint(equalToConstant: 10).isActive = true
-
         statusLabel = NSTextField(labelWithString: L10n.tr("capture.long.capturing"))
         statusLabel.font = .systemFont(ofSize: 12, weight: .medium)
-        statusLabel.textColor = NSColor(white: 0.12, alpha: 1)
+        hintLabel = NSTextField(labelWithString: L10n.tr("capture.long.hint"))
+        hintLabel.font = .systemFont(ofSize: 10)
+        hintLabel.textColor = .secondaryLabelColor
+        hintLabel.lineBreakMode = .byWordWrapping
 
+        imageView.imageScaling = .scaleProportionallyDown
+        imageView.wantsLayer = true
+        imageView.layer?.backgroundColor = NSColor(white: 0.9, alpha: 1).cgColor
+        imageView.layer?.cornerRadius = 6
+        imageView.layer?.masksToBounds = true
+        imageView.image = NSImage(size: NSSize(width: 2, height: 2))
+
+        // 捕获中：自动滚动 + 完成 + 取消
         autoscrollButton = NSButton(checkboxWithTitle: L10n.tr("capture.long.autoscroll"), target: nil, action: nil)
-        autoscrollButton.font = .systemFont(ofSize: 12)
-
-        let finishButton = NSButton(title: L10n.tr("capture.long.finish"), target: nil, action: nil)
+        autoscrollButton.font = .systemFont(ofSize: 11)
+        finishButton = NSButton(title: L10n.tr("capture.long.finish"), target: nil, action: nil)
         finishButton.bezelStyle = .rounded
         finishButton.keyEquivalent = "\r"
         finishButton.controlSize = .small
         finishButton.font = .systemFont(ofSize: 12, weight: .medium)
         finishButton.toolTip = "⏎"
+        cancelCaptureButton = NSButton(title: L10n.tr("action.cancel"), target: nil, action: nil)
+        cancelCaptureButton.bezelStyle = .rounded
+        cancelCaptureButton.controlSize = .small
+        cancelCaptureButton.toolTip = "Esc"
 
-        let cancelButton = NSButton(title: L10n.tr("action.cancel"), target: nil, action: nil)
-        cancelButton.bezelStyle = .rounded
-        cancelButton.controlSize = .small
-        cancelButton.font = .systemFont(ofSize: 12)
-        cancelButton.toolTip = "Esc"
+        // 结果：编辑 / 保存 / 取消 / 确定
+        editButton = NSButton(title: L10n.tr("action.annotate"), target: nil, action: nil)
+        saveButton = NSButton(title: L10n.tr("editor.saveToFile"), target: nil, action: nil)
+        cancelResultButton = NSButton(title: L10n.tr("action.cancel"), target: nil, action: nil)
+        confirmButton = NSButton(title: L10n.tr("action.confirm"), target: nil, action: nil)
+        confirmButton.bezelStyle = .rounded
+        confirmButton.keyEquivalent = "\r"
+        confirmButton.controlSize = .small
+        confirmButton.font = .systemFont(ofSize: 12, weight: .medium)
+        confirmButton.toolTip = "⏎"
+        for button in [editButton, saveButton, cancelResultButton] {
+            button.bezelStyle = .rounded
+            button.controlSize = .small
+        }
 
-        let hintLabel = NSTextField(labelWithString: L10n.tr("capture.long.hint"))
-        hintLabel.font = .systemFont(ofSize: 10)
-        hintLabel.textColor = NSColor(white: 0.45, alpha: 1)
+        captureBar = NSStackView(views: [autoscrollButton, finishButton, cancelCaptureButton])
+        captureBar.orientation = .horizontal
+        captureBar.alignment = .centerY
+        captureBar.spacing = 8
+
+        resultBar = NSStackView(views: [editButton, saveButton, cancelResultButton, confirmButton])
+        resultBar.orientation = .horizontal
+        resultBar.alignment = .centerY
+        resultBar.spacing = 8
+        resultBar.isHidden = true
+
+        let rightColumn = NSStackView(views: [statusLabel, hintLabel, captureBar, resultBar])
+        rightColumn.orientation = .vertical
+        rightColumn.alignment = .leading
+        rightColumn.spacing = 6
+
+        let content = NSStackView(views: [imageView, rightColumn])
+        content.orientation = .horizontal
+        content.alignment = .top
+        content.spacing = 12
+        content.edgeInsets = NSEdgeInsets(top: 12, left: 12, bottom: 12, right: 12)
 
         let effect = NSVisualEffectView()
         effect.material = .popover
@@ -4099,32 +4184,36 @@ final class LongCaptureHUD: NSPanel {
 
         let tint = NSView()
         tint.wantsLayer = true
-        tint.layer?.backgroundColor = NSColor(white: 1, alpha: 0.72).cgColor
+        tint.layer?.backgroundColor = NSColor(white: 1, alpha: 0.86).cgColor
 
-        let mainRow = NSStackView(views: [recordingDot, statusLabel, autoscrollButton, finishButton, cancelButton])
-        mainRow.orientation = .horizontal
-        mainRow.alignment = .centerY
-        mainRow.spacing = 10
-        mainRow.edgeInsets = NSEdgeInsets(top: 8, left: 14, bottom: 0, right: 14)
-        statusLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        statusLabel.setContentHuggingPriority(.defaultLow, for: .horizontal)
-
-        let stack = NSStackView(views: [mainRow, hintLabel])
-        stack.orientation = .vertical
-        stack.alignment = .leading
-        stack.spacing = 2
-        stack.edgeInsets = NSEdgeInsets(top: 0, left: 14, bottom: 8, right: 14)
-
-        let container = NSView()
-        container.translatesAutoresizingMaskIntoConstraints = false
-        tint.translatesAutoresizingMaskIntoConstraints = false
-        stack.translatesAutoresizingMaskIntoConstraints = false
         effect.addSubview(tint)
-        effect.addSubview(stack)
+        effect.addSubview(content)
+        let container = NSView()
         container.addSubview(effect)
+        content.translatesAutoresizingMaskIntoConstraints = false
+        effect.translatesAutoresizingMaskIntoConstraints = false
+        tint.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(tint)
+        NSLayoutConstraint.activate([
+            effect.topAnchor.constraint(equalTo: container.topAnchor),
+            effect.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+            effect.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            effect.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            tint.topAnchor.constraint(equalTo: effect.topAnchor),
+            tint.bottomAnchor.constraint(equalTo: effect.bottomAnchor),
+            tint.leadingAnchor.constraint(equalTo: effect.leadingAnchor),
+            tint.trailingAnchor.constraint(equalTo: effect.trailingAnchor),
+            content.topAnchor.constraint(equalTo: effect.topAnchor, constant: 12),
+            content.bottomAnchor.constraint(equalTo: effect.bottomAnchor, constant: -12),
+            content.leadingAnchor.constraint(equalTo: effect.leadingAnchor, constant: 12),
+            content.trailingAnchor.constraint(equalTo: effect.trailingAnchor, constant: -12),
+            // 预览宽度固定、高度跟随内容，避免拼接图无限拉长面板
+            imageView.widthAnchor.constraint(equalToConstant: 220),
+            imageView.heightAnchor.constraint(equalToConstant: 260),
+        ])
 
         super.init(
-            contentRect: NSRect(x: 0, y: 0, width: 380, height: 66),
+            contentRect: NSRect(x: 0, y: 0, width: 460, height: 310),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered, defer: false
         )
@@ -4133,62 +4222,102 @@ final class LongCaptureHUD: NSPanel {
         backgroundColor = .clear
         hasShadow = true
         hidesOnDeactivate = false
+        isReleasedWhenClosed = false
         contentView = container
 
-        NSLayoutConstraint.activate([
-            effect.topAnchor.constraint(equalTo: container.topAnchor, constant: 0),
-            effect.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: 0),
-            effect.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 0),
-            effect.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: 0),
-
-            tint.topAnchor.constraint(equalTo: effect.topAnchor),
-            tint.bottomAnchor.constraint(equalTo: effect.bottomAnchor),
-            tint.leadingAnchor.constraint(equalTo: effect.leadingAnchor),
-            tint.trailingAnchor.constraint(equalTo: effect.trailingAnchor),
-
-            stack.topAnchor.constraint(equalTo: effect.topAnchor, constant: 0),
-            stack.bottomAnchor.constraint(equalTo: effect.bottomAnchor, constant: 0),
-            stack.leadingAnchor.constraint(equalTo: effect.leadingAnchor, constant: 0),
-            stack.trailingAnchor.constraint(equalTo: effect.trailingAnchor, constant: 0),
-        ])
-
-        // 目标回调（NSButton target 需要 target-action；用辅助闭包持有）
-        finishButton.target = ClosureTarget.shared
+        let target = ClosureTarget.shared
+        finishButton.target = target
         finishButton.action = #selector(ClosureTarget.finishAction)
-        ClosureTarget.shared.finishHandler = onFinish
-        cancelButton.target = ClosureTarget.shared
-        cancelButton.action = #selector(ClosureTarget.cancelAction)
-        ClosureTarget.shared.cancelHandler = onCancel
-        autoscrollButton.target = ClosureTarget.shared
+        cancelCaptureButton.target = target
+        cancelCaptureButton.action = #selector(ClosureTarget.cancelAction)
+        autoscrollButton.target = target
         autoscrollButton.action = #selector(ClosureTarget.autoscrollAction)
-        ClosureTarget.shared.autoscrollHandler = onAutoscroll
+        target.finishHandler = onFinish
+        target.cancelHandler = onCancel
+        target.autoscrollHandler = onAutoscroll
 
-        // 固定屏幕顶部居中：选区面板隐藏后，这里全程可见，任何位置滚动都能一眼看到
-        let width: CGFloat = 380
-        let height: CGFloat = 66
-        let visibleTop = screen.frame.maxY
-        let x = screen.frame.minX + (screen.frame.width - width) / 2
-        setFrameOrigin(NSPoint(x: x, y: visibleTop - height - 8))
+        editButton.target = target
+        editButton.action = #selector(ClosureTarget.editAction)
+        saveButton.target = target
+        saveButton.action = #selector(ClosureTarget.savePNGAction)
+        cancelResultButton.target = target
+        cancelResultButton.action = #selector(ClosureTarget.closeAction)
+        confirmButton.target = target
+        confirmButton.action = #selector(ClosureTarget.confirmAction)
+        target.editHandler = onEdit
+        target.confirmHandler = onConfirm
+
+        position(near: regionRect, on: screen)
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
 
     override var canBecomeKey: Bool { true }
 
-    func showPanel() {
-        makeKeyAndOrderFront(nil)
+    /// 贴在选区右侧；放不下翻到左侧；垂直方向贴选区顶部对齐
+    private func position(near region: CGRect, on screen: NSScreen) {
+        let panelSize = NSRect(x: 0, y: 0, width: 460, height: 310).size
+        let screenFrame = screen.visibleFrame
+        // region 是视图坐标（左上原点）→ 屏幕坐标
+        let regionInScreen = CGRect(
+            x: screen.frame.minX + region.minX,
+            y: screen.frame.maxY - region.maxY,
+            width: region.width, height: region.height
+        )
+        let gap: CGFloat = 16
+        var originX = regionInScreen.maxX + gap
+        if originX + panelSize.width > screenFrame.maxX - 8 {
+            originX = max(screenFrame.minX + 8, regionInScreen.minX - gap - panelSize.width)
+        }
+        var originY = screenFrame.maxY - regionInScreen.minY - panelSize.height
+        originY = max(screenFrame.minY + 8, min(originY, screenFrame.maxY - panelSize.height - 8))
+        setFrameOrigin(NSPoint(x: originX, y: originY))
     }
 
-    func update(height: Int, atBottom: Bool) {
+    func showPanel() {
+        makeKeyAndOrderFront(nil)
+        ClosureTarget.shared.panel = self
+    }
+
+    /// 捕获中：刷新状态 + 预览（预览随滚动增长）
+    func updateCapture(height: Int, atBottom: Bool, preview: NSImage?) {
         statusLabel.stringValue = atBottom
             ? L10n.tr("capture.long.bottom")
             : String(format: L10n.tr("capture.long.height"), height)
+        imageView.image = preview
+    }
+
+    /// 完成：切到结果模式，预览显示最终长图，按钮换为 编辑/保存/取消/确定
+    func showResult(pngData: Data, image: NSImage) {
+        resultPNG = pngData
+        ClosureTarget.shared.panel = self
+        ClosureTarget.shared.panelPNG = pngData
+        ClosureTarget.shared.closeHandler = { [weak self] in
+            self?.orderOut(nil)
+        }
+        imageView.image = image
+        captureBar.isHidden = true
+        resultBar.isHidden = false
+        statusLabel.stringValue = L10n.tr("capture.long.preview")
+        hintLabel.isHidden = true
+        makeKeyAndOrderFront(nil)
     }
 
     override func keyDown(with event: NSEvent) {
-        if Int(event.keyCode) == 53 { // Esc 取消
-            ClosureTarget.shared.cancelHandler?()
-        } else {
+        switch Int(event.keyCode) {
+        case 53: // Esc：捕获中 = 取消；结果态 = 关面板
+            if captureBar.isHidden {
+                ClosureTarget.shared.closeHandler?()
+            } else {
+                ClosureTarget.shared.cancelHandler?()
+            }
+        case 36, 76: // 回车：捕获中 = 完成；结果态 = 确定（复制进剪贴板）
+            if captureBar.isHidden {
+                ClosureTarget.shared.confirmHandler?(resultPNG ?? Data())
+            } else {
+                ClosureTarget.shared.finishHandler?()
+            }
+        default:
             super.keyDown(with: event)
         }
     }
@@ -4201,9 +4330,12 @@ final class ClosureTarget: NSObject {
     var finishHandler: (() -> Void)?
     var cancelHandler: (() -> Void)?
     var autoscrollHandler: ((Bool) -> Void)?
-    /// 预览窗的输出数据（复制/保存用）
-    var pngData: Data?
-    weak var previewWindow: NSWindow?
+    var editHandler: ((Data) -> Void)?
+    var confirmHandler: ((Data) -> Void)?
+    var closeHandler: (() -> Void)?
+    /// 当前伴随面板：保存对话框以它做 sheet 宿主
+    weak var panel: NSWindow?
+    var panelPNG: Data?
 
     @objc func finishAction(_ sender: Any?) { finishHandler?() }
     @objc func cancelAction(_ sender: Any?) { cancelHandler?() }
@@ -4211,17 +4343,13 @@ final class ClosureTarget: NSObject {
         autoscrollHandler?(sender.state == .on)
     }
 
-    @objc func copyPNGAction(_ sender: Any?) {
-        guard let pngData else { return }
-        let pasteboard = NSPasteboard.general
-        pasteboard.clearContents()
-        pasteboard.setData(pngData, forType: .png)
-        previewWindow?.close()
-        ToastCenter.shared.show(ToastDescriptor(message: L10n.tr("capture.long.copied"), icon: .success))
+    @objc func editAction(_ sender: Any?) {
+        guard let data = panelPNG else { return }
+        editHandler?(data)
     }
 
     @objc func savePNGAction(_ sender: Any?) {
-        guard let pngData, let window = previewWindow else { return }
+        guard let pngData = panelPNG, let window = panel else { return }
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.png]
         panel.nameFieldStringValue = "LongScreenshot.png"
@@ -4232,78 +4360,14 @@ final class ClosureTarget: NSObject {
             }
         }
     }
-}
 
-// MARK: - 长截图预览（完成后预览长图，复制或保存——对齐 FloGravity 流程）
+    @objc func confirmAction(_ sender: Any?) {
+        guard let data = panelPNG else { return }
+        confirmHandler?(data)
+    }
 
-@MainActor
-final class LongCapturePreview {
-    @discardableResult
-    static func present(pngData: Data) -> NSWindow? {
-        guard let image = NSImage(data: pngData) else { return nil }
-
-        let size = image.size
-        let maxWidth = min(760, (NSScreen.main?.frame.width ?? 1200) - 80)
-        let maxHeight = (NSScreen.main?.frame.height ?? 900) - 160
-        let windowWidth = maxWidth
-        let windowHeight = min(maxHeight, max(360, size.height * min(1, maxWidth / size.width) + 92))
-
-        let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: windowWidth, height: windowHeight),
-            styleMask: [.titled, .closable, .miniaturizable],
-            backing: .buffered, defer: false
-        )
-        window.title = L10n.tr("capture.long.preview")
-        window.isReleasedWhenClosed = false
-
-        let scrollView = NSScrollView()
-        scrollView.hasVerticalScroller = true
-        scrollView.hasHorizontalScroller = false
-        scrollView.autohidesScrollers = true
-        scrollView.borderType = .noBorder
-        scrollView.documentView = NSImageView(image: image)
-        (scrollView.documentView as? NSImageView)?.imageScaling = .scaleNone
-
-        let copyButton = NSButton(title: L10n.tr("editor.copy"), target: nil, action: nil)
-        copyButton.bezelStyle = .rounded
-        let saveButton = NSButton(title: L10n.tr("editor.saveToFile"), target: nil, action: nil)
-        saveButton.bezelStyle = .rounded
-        let infoLabel = NSTextField(labelWithString: "\(Int(size.width)) × \(Int(size.height)) px")
-        infoLabel.font = .systemFont(ofSize: 11)
-        infoLabel.textColor = .secondaryLabelColor
-
-        let buttonStack = NSStackView(views: [infoLabel, NSView(), saveButton, copyButton])
-        buttonStack.orientation = .horizontal
-        buttonStack.spacing = 10
-        buttonStack.edgeInsets = NSEdgeInsets(top: 8, left: 14, bottom: 8, right: 14)
-
-        let container = NSView()
-        scrollView.translatesAutoresizingMaskIntoConstraints = false
-        buttonStack.translatesAutoresizingMaskIntoConstraints = false
-        container.addSubview(scrollView)
-        container.addSubview(buttonStack)
-        NSLayoutConstraint.activate([
-            scrollView.topAnchor.constraint(equalTo: container.topAnchor),
-            scrollView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            scrollView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            scrollView.bottomAnchor.constraint(equalTo: buttonStack.topAnchor, constant: -4),
-            buttonStack.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            buttonStack.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            buttonStack.bottomAnchor.constraint(equalTo: container.bottomAnchor),
-            buttonStack.heightAnchor.constraint(equalToConstant: 40),
-        ])
-        window.contentView = container
-
-        copyButton.target = ClosureTarget.shared
-        copyButton.action = #selector(ClosureTarget.copyPNGAction)
-        saveButton.target = ClosureTarget.shared
-        saveButton.action = #selector(ClosureTarget.savePNGAction)
-        ClosureTarget.shared.pngData = pngData
-        ClosureTarget.shared.previewWindow = window
-
-        window.center()
-        NSApp.activate(ignoringOtherApps: true)
-        window.makeKeyAndOrderFront(nil)
-        return window
+    @objc func closeAction(_ sender: Any?) {
+        closeHandler?()
     }
 }
+
