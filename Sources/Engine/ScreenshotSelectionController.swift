@@ -2240,15 +2240,28 @@ final class ScreenshotSelectionSurfaceView: NSView {
         guard let cropped = cg.cropping(to: CGRect(x: originX, y: originY, width: cells, height: cells))
         else { return }
 
-        // 光标右下偏移，贴边自动翻到左上
-        var center = CGPoint(x: point.x + magnifierSide / 2 + 20, y: point.y + magnifierSide / 2 + 20)
-        if center.x + magnifierSide / 2 > bounds.width || center.y + magnifierSide / 2 > bounds.height {
-            center = CGPoint(x: point.x - magnifierSide / 2 - 20, y: point.y - magnifierSide / 2 - 20)
-        }
-        let lens = NSRect(
-            x: center.x - magnifierSide / 2, y: center.y - magnifierSide / 2,
+        // 镜片默认在光标右下 20pt；拖选区时四个角落逐个试，
+        // 取第一个不与选区相交的位置，避免镜片盖住正在框选的内容
+        let lensCandidates: [CGPoint] = [
+            CGPoint(x: point.x + 20, y: point.y + 20),
+            CGPoint(x: point.x - 20 - magnifierSide, y: point.y - 20 - magnifierSide),
+            CGPoint(x: point.x - 20 - magnifierSide, y: point.y + 20),
+            CGPoint(x: point.x + 20, y: point.y - 20 - magnifierSide),
+        ]
+        var lens = NSRect(
+            x: lensCandidates[0].x, y: lensCandidates[0].y,
             width: magnifierSide, height: magnifierSide
-        ).clamped(to: bounds.size)
+        )
+        if let sel = selection {
+            for candidate in lensCandidates {
+                let rect = NSRect(x: candidate.x, y: candidate.y, width: magnifierSide, height: magnifierSide)
+                if rect.intersection(sel).isEmpty {
+                    lens = rect
+                    break
+                }
+            }
+        }
+        lens = lens.clamped(to: bounds.size)
 
         ctx.cgContext.saveGState()
         let clip = NSBezierPath(roundedRect: lens, xRadius: magnifierCornerRadius, yRadius: magnifierCornerRadius)
@@ -2363,10 +2376,17 @@ final class ScreenshotSelectionSurfaceView: NSView {
             + hintSize.height + 2
             + toggleSize.height
 
-        // 默认挂在放大镜下方；下方放不下就翻到上方
+        // 默认挂在放大镜下方；下方放不下或与选区相交就翻到上方
         var origin = CGPoint(x: lens.midX - panelWidth / 2, y: lens.maxY + 8)
         if origin.y + panelHeight > bounds.height - 4 {
             origin.y = lens.minY - 8 - panelHeight
+        }
+        if let sel = selection {
+            let below = NSRect(x: origin.x, y: lens.maxY + 8, width: panelWidth, height: panelHeight)
+            let above = NSRect(x: origin.x, y: lens.minY - 8 - panelHeight, width: panelWidth, height: panelHeight)
+            if !below.intersection(sel).isEmpty && above.intersection(sel).isEmpty {
+                origin = CGPoint(x: above.minX, y: above.minY)
+            }
         }
         origin.x = max(4, min(origin.x, bounds.width - panelWidth - 4))
         origin.y = max(4, min(origin.y, bounds.height - panelHeight - 4))
