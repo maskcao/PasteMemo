@@ -2570,12 +2570,12 @@ final class SelectionToolbar: NSVisualEffectView {
     private let chromeTintView = NSView()
 
     /// 磨砂条叠加色：随系统深浅色自适应。
-    /// 浅色用接近实白的底，保证叠在压暗的截图上时仍是一条干净的浅色工具条，
-    /// 而不是被背景染成灰黑色。
+    /// 半透明（而非近实色）叠在 .popover 磨砂材质上，压暗的截图才能透过模糊透出来，
+    /// 呈现原生磨砂玻璃质感；浅色叠浅、深色叠深，图标（labelColor 动态色）两种主题下都清晰。
     static let chromeTint: NSColor = NSColor(name: nil) { appearance in
         appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-            ? NSColor(white: 0.18, alpha: 0.92)
-            : NSColor(white: 0.97, alpha: 0.96)
+            ? NSColor(white: 0.16, alpha: 0.5)
+            : NSColor(white: 0.97, alpha: 0.5)
     }
 
     init(target: AnyObject, action: Selector) {
