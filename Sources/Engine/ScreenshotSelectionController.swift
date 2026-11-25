@@ -220,7 +220,7 @@ final class ScreenshotSelectionController: NSObject {
         // RDP 客户端失活期间鼠标事件不会进远端会话，这是「截图后远程主机点不动」的根因
         if let app = restoredApp,
            app.processIdentifier != NSRunningApplication.current.processIdentifier {
-            app.activate(from: nil, options: [.activateAllWindows])
+            app.activate(from: NSRunningApplication.current, options: [.activateAllWindows])
         }
         restoredApp = nil
     }
