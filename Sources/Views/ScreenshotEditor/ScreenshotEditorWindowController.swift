@@ -9,8 +9,12 @@ final class ScreenshotEditorWindowController: NSObject, NSWindowDelegate {
     static let shared = ScreenshotEditorWindowController()
 
     private var window: NSWindow?
-    private var hostingView: NSHostingView<ScreenshotEditorView>?
+    private var hostingView: NSHostingView<AnyView>?
     private var currentImage: NSImage?
+    /// 每次展示的唯一标识：.id 变化会强制 SwiftUI 重建视图树，
+    /// 让 ScreenshotEditorView 的 @State（viewModel/图片）重新用新图初始化——
+    /// 否则单例窗口复用旧 state，窗口关闭过一次后再打开就是空图（0×0）
+    private var sessionID = UUID()
 
     static func present(item: ClipItem) {
         guard let data = item.imageData, let image = NSImage(data: data) else { return }
@@ -25,11 +29,12 @@ final class ScreenshotEditorWindowController: NSObject, NSWindowDelegate {
     private func show(image: NSImage) {
         currentImage = image
         let window = ensureWindow()
-        hostingView?.rootView = ScreenshotEditorView(
+        sessionID = UUID()
+        hostingView?.rootView = AnyView(ScreenshotEditorView(
             image: image,
             onSave: { [weak self] pngData in self?.saveToClipboard(pngData: pngData) },
             onClose: { [weak self] in self?.window?.close() }
-        )
+        ).id(sessionID))
         window.title = L10n.tr("action.annotate")
         fitWindow(to: image.size)
 
@@ -42,11 +47,11 @@ final class ScreenshotEditorWindowController: NSObject, NSWindowDelegate {
 
     private func ensureWindow() -> NSWindow {
         if let window { return window }
-        let hosting = NSHostingView(rootView: ScreenshotEditorView(
+        let hosting = NSHostingView(rootView: AnyView(ScreenshotEditorView(
             image: NSImage(),
             onSave: { _ in },
             onClose: {}
-        ))
+        ).id(UUID())))
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 800, height: 600),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
@@ -84,7 +89,11 @@ final class ScreenshotEditorWindowController: NSObject, NSWindowDelegate {
     // MARK: - NSWindowDelegate
 
     func windowWillClose(_ notification: Notification) {
-        hostingView?.rootView = ScreenshotEditorView(image: NSImage(), onSave: { _ in }, onClose: {})
+        hostingView?.rootView = AnyView(ScreenshotEditorView(
+            image: NSImage(),
+            onSave: { _ in },
+            onClose: {}
+        ).id(UUID()))
         currentImage = nil
     }
 }
