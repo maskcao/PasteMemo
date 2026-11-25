@@ -11,6 +11,7 @@ final class LongCaptureSessionState {
     let pixelRect: CGRect
     var timer: Timer?
     var hud: LongCaptureHUD?
+    var keyMonitor: Any?
     /// 连续无新增内容的帧数，达到阈值提示「已滚动到底」
     var noAddStreak = 0
 
@@ -27,6 +28,13 @@ final class LongCaptureSessionState {
     func closeHUD() {
         hud?.close()
         hud = nil
+    }
+
+    func removeKeyMonitor() {
+        if let monitor = keyMonitor {
+            NSEvent.removeMonitor(monitor)
+            keyMonitor = nil
+        }
     }
 }
 
@@ -1211,6 +1219,19 @@ final class ScreenshotSelectionSurfaceView: NSView {
         hud.showPanel()
         session.hud = hud
 
+        // 全局按键监听：焦点切到目标窗口滚动时 HUD 不再是键窗，
+        // Esc / 回车的本地 keyDown 收不到——全局监听兜底，任何位置都能停
+        session.keyMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.keyDown]) { [weak self] event in
+            Task { @MainActor in
+                guard let self, self.longSession != nil else { return }
+                switch Int(event.keyCode) {
+                case 53: self.cancelLongCapture()
+                case 36: self.finishLongCapture()
+                default: break
+                }
+            }
+        }
+
         let timer = Timer(timeInterval: 0.35, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.longTick() }
         }
@@ -1267,6 +1288,7 @@ final class ScreenshotSelectionSurfaceView: NSView {
     private func teardownLongSession() {
         guard let session = longSession else { return }
         session.stopTimer()
+        session.removeKeyMonitor()
         session.closeHUD()
         autoScrollEnabled = false
         longSession = nil
@@ -4032,6 +4054,16 @@ final class LongCaptureHUD: NSPanel {
         onCancel: @escaping () -> Void,
         onAutoscroll: @escaping (Bool) -> Void
     ) {
+        // 红色录制点：面板被藏起来后这是「正在长截图」最显眼的信号
+        let recordingDot = NSView()
+        recordingDot.wantsLayer = true
+        recordingDot.layer?.backgroundColor = NSColor.systemRed.cgColor
+        recordingDot.layer?.cornerRadius = 5
+        recordingDot.layer?.masksToBounds = true
+        recordingDot.translatesAutoresizingMaskIntoConstraints = false
+        recordingDot.heightAnchor.constraint(equalToConstant: 10).isActive = true
+        recordingDot.widthAnchor.constraint(equalToConstant: 10).isActive = true
+
         statusLabel = NSTextField(labelWithString: L10n.tr("capture.long.capturing"))
         statusLabel.font = .systemFont(ofSize: 12, weight: .medium)
         statusLabel.textColor = NSColor(white: 0.12, alpha: 1)
@@ -4069,7 +4101,7 @@ final class LongCaptureHUD: NSPanel {
         tint.wantsLayer = true
         tint.layer?.backgroundColor = NSColor(white: 1, alpha: 0.72).cgColor
 
-        let mainRow = NSStackView(views: [statusLabel, autoscrollButton, finishButton, cancelButton])
+        let mainRow = NSStackView(views: [recordingDot, statusLabel, autoscrollButton, finishButton, cancelButton])
         mainRow.orientation = .horizontal
         mainRow.alignment = .centerY
         mainRow.spacing = 10
@@ -4131,20 +4163,12 @@ final class LongCaptureHUD: NSPanel {
         autoscrollButton.action = #selector(ClosureTarget.autoscrollAction)
         ClosureTarget.shared.autoscrollHandler = onAutoscroll
 
-        // 位置：优先捕获区域正上方；放不下则放区域下方（始终在捕获区域外，不会入镜）
+        // 固定屏幕顶部居中：选区面板隐藏后，这里全程可见，任何位置滚动都能一眼看到
         let width: CGFloat = 380
         let height: CGFloat = 66
-        let gap: CGFloat = 12
         let visibleTop = screen.frame.maxY
-        let visibleBottom = screen.frame.minY
-        var hudOriginY = screen.frame.maxY - regionRect.minY + gap
-        if hudOriginY + height > visibleTop {
-            hudOriginY = screen.frame.maxY - regionRect.maxY - gap - height
-        }
-        hudOriginY = max(visibleBottom + 4, min(hudOriginY, visibleTop - height - 4))
-        var x = screen.frame.minX + regionRect.midX - width / 2
-        x = max(screen.frame.minX + 8, min(x, screen.frame.maxX - width - 8))
-        setFrameOrigin(NSPoint(x: x, y: hudOriginY))
+        let x = screen.frame.minX + (screen.frame.width - width) / 2
+        setFrameOrigin(NSPoint(x: x, y: visibleTop - height - 8))
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
