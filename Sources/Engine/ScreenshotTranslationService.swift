@@ -36,9 +36,9 @@ final class ScreenshotTranslationService {
         do {
             // 目标语言与系统翻译同一套推断（源语言识别 + 首选语言取反）
             let pair = await Self.resolvePair(for: text)
-            let targetName = pair.target.languageCode.map {
-                Locale.current.localizedString(forLanguageCode: $0.identifier)
-            } ?? pair.target.identifier
+            let targetName = Locale.current.localizedString(
+                forLanguageCode: pair.target.languageCode?.identifier ?? "en"
+            )
             let prompt = L10n.tr("editor.translate.ai.prompt", targetName)
             // 与「问AI」同一条长度红线与后端选择（本地 CLI 或 HTTP 端点）
             let limited = String(text.prefix(AIProviderSettings.maxContentLength))
