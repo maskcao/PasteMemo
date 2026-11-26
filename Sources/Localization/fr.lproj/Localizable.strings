@@ -279,6 +279,10 @@
 "capture.long.failed" = "Échec de la capture longue";
 "settings.screenshot" = "Capture d’écran";
 "settings.screenshot.delay" = "Capture différée";
+"settings.screenshot.translate" = "Traduction du capture";
+"settings.screenshot.translate.local" = "Locale (système)";
+"settings.screenshot.translate.ai" = "Modèle IA";
+"editor.translate.ai.prompt" = "Traduisez le texte suivant en %1$@. N’affichez que la traduction, sans explication. Si le texte est déjà en %1$@, traduisez-le en chinois.";
 "settings.showLinkURL" = "Afficher l'URL au lieu du titre pour les liens";
 "settings.webPreview" = "Aperçu web";
 "settings.imageLinkPreview" = "Aperçu des liens d'image";

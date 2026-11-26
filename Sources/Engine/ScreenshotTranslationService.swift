@@ -22,6 +22,47 @@ final class ScreenshotTranslationService {
 
     private init() {}
 
+    /// 设置页「截图」里选的翻译引擎：local = 系统本地翻译（默认），ai = 已配置的大模型。
+    static var aiEngine: Bool {
+        (UserDefaults.standard.string(forKey: "screenshotTranslationEngine") ?? "local") == "ai"
+    }
+
+    /// 翻译入口：按「截图」设置走系统本地翻译或已配置的大模型；
+    /// 大模型未配置 / 调用失败时自动回退系统翻译，保证功能永远可用。
+    func translateWithEngine(text: String, in window: NSWindow?) async throws -> String {
+        guard Self.aiEngine, AIProviderSettings.isConfigured else {
+            return try await translate(text: text, in: window)
+        }
+        do {
+            // 目标语言与系统翻译同一套推断（源语言识别 + 首选语言取反）
+            let pair = await Self.resolvePair(for: text)
+            let targetName = pair.target.languageCode.map {
+                Locale.current.localizedString(forLanguageCode: $0.identifier)
+            } ?? pair.target.identifier
+            let prompt = L10n.tr("editor.translate.ai.prompt", targetName)
+            // 与「问AI」同一条长度红线与后端选择（本地 CLI 或 HTTP 端点）
+            let limited = String(text.prefix(AIProviderSettings.maxContentLength))
+            let answer: String
+            if AIProviderSettings.mode == .local {
+                answer = try await AICLIBackend(config: AIProviderSettings.cliSnapshot())
+                    .transform(prompt: prompt, content: limited)
+            } else {
+                answer = try await AIClient(config: AIProviderSettings.snapshot())
+                    .transform(prompt: prompt, content: limited)
+            }
+            let trimmed = answer.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else {
+                throw NSError(domain: "ScreenshotTranslation", code: 3,
+                              userInfo: [NSLocalizedDescriptionKey: L10n.tr("editor.translate.failed")])
+            }
+            return trimmed
+        } catch {
+            // 大模型不可用（没配好 / 超时 / 网络）：回退系统本地翻译
+            NSLog("AI translation failed, falling back to system translation: %@", String(describing: error))
+            return try await translate(text: text, in: window)
+        }
+    }
+
     /// 把一段文字翻成目标语言。目标语言默认取系统首选语言，
     /// 若原文本来就是该语言（常见是中→中），则翻成英文。
     func translate(text: String, in window: NSWindow?) async throws -> String {

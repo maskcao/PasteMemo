@@ -202,6 +202,10 @@
 "capture.long.failed" = "Tangkapan panjang gagal";
 "settings.screenshot" = "Tangkapan Layar";
 "settings.screenshot.delay" = "Tunda Tangkapan";
+"settings.screenshot.translate" = "Terjemahan tangkapan";
+"settings.screenshot.translate.local" = "Lokal (sistem)";
+"settings.screenshot.translate.ai" = "Model AI";
+"editor.translate.ai.prompt" = "Terjemahkan teks berikut ke %1$@. Tampilkan hanya terjemahannya, tanpa penjelasan. Jika teks sudah dalam %1$@, terjemahkan ke bahasa Mandarin.";
 "settings.showLinkURL" = "Tampilkan URL alih-alih judul halaman untuk tautan";
 "settings.webPreview" = "Pratinjau web";
 "settings.imageLinkPreview" = "Pratinjau tautan gambar";

@@ -201,6 +201,10 @@
 "capture.long.failed" = "長截圖失敗";
 "settings.screenshot" = "截圖";
 "settings.screenshot.delay" = "延時截圖";
+"settings.screenshot.translate" = "截圖翻譯";
+"settings.screenshot.translate.local" = "系統本地翻譯";
+"settings.screenshot.translate.ai" = "AI 大模型";
+"editor.translate.ai.prompt" = "請將以下文本翻譯成%1$@，只輸出譯文，不要解釋；若文本已是%1$@，請翻譯成中文。";
 "settings.showLinkURL" = "連結顯示原始網址而非頁面標題";
 "settings.webPreview" = "網頁預覽";
 "settings.imageLinkPreview" = "圖片連結預覽";

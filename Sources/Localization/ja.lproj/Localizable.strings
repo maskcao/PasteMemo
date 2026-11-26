@@ -287,6 +287,10 @@
 "capture.long.failed" = "長いスクリーンショットに失敗しました";
 "settings.screenshot" = "スクリーンショット";
 "settings.screenshot.delay" = "キャプチャ遅延";
+"settings.screenshot.translate" = "スクリーンショット翻訳";
+"settings.screenshot.translate.local" = "ローカル（システム）";
+"settings.screenshot.translate.ai" = "AIモデル";
+"editor.translate.ai.prompt" = "次のテキストを%1$@に翻訳してください。説明なしで翻訳結果のみを出力してください。テキストが既に%1$@の場合は中国語に翻訳してください。";
 "settings.ocr" = "OCR";
 "settings.ocr.enable" = "画像OCRを有効にする";
 "settings.ocr.auto" = "新しい画像を自動処理する";

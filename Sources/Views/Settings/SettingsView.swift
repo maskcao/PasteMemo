@@ -1043,6 +1043,7 @@ struct PreviewPane: View {
 /// 「截图」页：截图行为设置（延时等），快捷键在「快捷键」页管理。
 struct ScreenshotSettingsPane: View {
     @AppStorage("screenshotDelaySeconds") private var delaySeconds = 0
+    @AppStorage("screenshotTranslationEngine") private var translateEngine = "local"
 
     private let delayOptions = [0, 3, 5, 10]
 
@@ -1061,6 +1062,16 @@ struct ScreenshotSettingsPane: View {
                 .pickerStyle(.segmented)
             } header: {
                 Text(L10n.tr("settings.screenshot.delay"))
+            }
+
+            Section {
+                Picker(L10n.tr("settings.screenshot.translate"), selection: $translateEngine) {
+                    Text(L10n.tr("settings.screenshot.translate.local")).tag("local")
+                    Text(L10n.tr("settings.screenshot.translate.ai")).tag("ai")
+                }
+                .pickerStyle(.segmented)
+            } header: {
+                Text(L10n.tr("settings.screenshot.translate"))
             }
 
             Section {

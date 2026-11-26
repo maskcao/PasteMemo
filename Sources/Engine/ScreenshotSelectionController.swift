@@ -1606,7 +1606,7 @@ final class ScreenshotSelectionSurfaceView: NSView {
                         self.showChip(L10n.tr("editor.ocr.empty"))
                         return
                     }
-                    let translated = try await ScreenshotTranslationService.shared.translate(
+                    let translated = try await ScreenshotTranslationService.shared.translateWithEngine(
                         text: text,
                         in: self.window
                     )
