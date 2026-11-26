@@ -130,6 +130,17 @@ enum AIProviderSettings {
         }
     }
 
+    /// 当前模型的「品牌名」：取模型名第一段并去掉版本号，如
+    /// "MiniMax-M3.1-Flash" → "MinMax"、"DeepSeek-V4.1" → "DeepSeek"。
+    /// 供「提取文字 / 翻译」走 AI 时结果面板左下角的 Powered By 署名用。
+    static var modelDisplayName: String? {
+        let raw = mode == .local ? cliModel : model
+        let firstSegment = raw.components(separatedBy: "-").first ?? raw
+        let brand = firstSegment.filter { !$0.isNumber }
+        let trimmed = brand.trimmingCharacters(in: .whitespaces)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
     static func snapshot() -> AIClientConfig {
         AIClientConfig(baseURL: baseURL, apiKey: apiKey, model: model,
                        timeout: timeoutSeconds, temperature: temperature, thinking: thinking)

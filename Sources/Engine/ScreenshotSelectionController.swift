@@ -1576,7 +1576,7 @@ final class ScreenshotSelectionSurfaceView: NSView {
                         let answer = try await AIClient(config: AIProviderSettings.snapshot())
                             .transcribeImage(png)
                         text = answer.trimmingCharacters(in: .whitespacesAndNewlines)
-                        if !text.isEmpty, let model = ScreenshotTranslationService.aiModelDisplayName {
+                        if !text.isEmpty, let model = AIProviderSettings.modelDisplayName {
                             attribution = L10n.tr("editor.translate.poweredBy", model)
                         }
                     } catch {
@@ -1640,7 +1640,7 @@ final class ScreenshotSelectionSurfaceView: NSView {
                         // AI 引擎出结果时，结果面板左下角署名模型品牌名（去掉版本号）
                         let attribution: String?
                         if translated.engine == .ai,
-                           let model = ScreenshotTranslationService.aiModelDisplayName {
+                           let model = AIProviderSettings.modelDisplayName {
                             attribution = L10n.tr("editor.translate.poweredBy", model)
                         } else {
                             attribution = nil

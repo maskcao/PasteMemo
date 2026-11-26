@@ -35,18 +35,6 @@ final class ScreenshotTranslationService {
         let engine: TranslationEngine
     }
 
-    /// AI 模式实际处理翻译的模型显示名：取品牌名，去掉版本号——
-    /// 如 "MiniMax-M3.1-Flash" → "MinMax"、"DeepSeek-V4.1" → "DeepSeek"。
-    static var aiModelDisplayName: String? {
-        let raw = AIProviderSettings.mode == .local
-            ? AIProviderSettings.cliModel
-            : AIProviderSettings.model
-        let firstSegment = raw.components(separatedBy: "-").first ?? raw
-        let brand = firstSegment.filter { !$0.isNumber }
-        let trimmed = brand.trimmingCharacters(in: .whitespaces)
-        return trimmed.isEmpty ? nil : trimmed
-    }
-
     /// 翻译入口：按「截图」设置走系统本地翻译或已配置的大模型；
     /// 大模型未配置 / 调用失败时自动回退系统翻译，保证功能永远可用。
     func translateWithEngine(text: String, in window: NSWindow?) async throws -> TranslatedText {
