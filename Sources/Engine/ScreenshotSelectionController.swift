@@ -1566,11 +1566,31 @@ final class ScreenshotSelectionSurfaceView: NSView {
         Task { [weak self] in
             guard let self else { return }
             do {
-                // 与剪贴板 OCR 走同一条链路：读同一个 markdown 开关（默认开）。
-                // macOS 26+ 走版面感知引擎（识别更完整），低版本自动回退纯文本。
-                let useMarkdown = UserDefaults.standard.object(forKey: "ocrToMarkdown") as? Bool ?? true
-                let result = try await ImageOCRService.shared.recognizeText(from: png, markdown: useMarkdown)
-                let text = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
+                // 按「截图」设置选引擎：ai = 视觉大模型直接读图取字；local = 本地 OCR。
+                // 本地 CLI 模式没有视觉能力、AI 未配置或调用失败 → 自动回退本地 OCR。
+                var text = ""
+                var attribution: String?
+                let useAI = (UserDefaults.standard.string(forKey: "screenshotOCREngine") ?? "local") == "ai"
+                if useAI, AIProviderSettings.isConfigured, AIProviderSettings.mode == .remote {
+                    do {
+                        let answer = try await AIClient(config: AIProviderSettings.snapshot())
+                            .transcribeImage(png)
+                        text = answer.trimmingCharacters(in: .whitespacesAndNewlines)
+                        if !text.isEmpty, let model = ScreenshotTranslationService.aiModelDisplayName {
+                            attribution = L10n.tr("editor.translate.poweredBy", model)
+                        }
+                    } catch {
+                        NSLog("AI OCR failed, falling back to local OCR: %@", String(describing: error))
+                        text = ""
+                    }
+                }
+                if text.isEmpty {
+                    // 与剪贴板 OCR 走同一条链路：读同一个 markdown 开关（默认开）。
+                    // macOS 26+ 走版面感知引擎（识别更完整），低版本自动回退纯文本。
+                    let useMarkdown = UserDefaults.standard.object(forKey: "ocrToMarkdown") as? Bool ?? true
+                    let result = try await ImageOCRService.shared.recognizeText(from: png, markdown: useMarkdown)
+                    text = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
+                }
                 guard !text.isEmpty else {
                     self.showChip(L10n.tr("editor.ocr.empty"))
                     return
@@ -1580,7 +1600,12 @@ final class ScreenshotSelectionSurfaceView: NSView {
                 pasteboard.setString(text, forType: .string)
                 // 识别结果小窗显示在选区右侧（对齐浮引「识别结果」面板）
                 if let sel = self.selection {
-                    self.presentOCRResult(text: text, selection: sel)
+                    self.presentResultPanel(
+                        title: L10n.tr("editor.ocr.result.title"),
+                        text: text,
+                        attribution: attribution,
+                        selection: sel
+                    )
                 }
                 self.showChip(L10n.tr("editor.ocr.copied"))
             } catch {
@@ -1690,10 +1715,6 @@ final class ScreenshotSelectionSurfaceView: NSView {
                 self.showChip(message, duration: 6)
             }
         }
-    }
-
-    private func presentOCRResult(text: String, selection: CGRect) {
-        presentResultPanel(title: L10n.tr("editor.ocr.result.title"), text: text, selection: selection)
     }
 
     /// 提取文字 / 翻译共用结果面板：标题可换，正文与复制按钮一致。

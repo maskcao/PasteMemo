@@ -116,6 +116,24 @@ struct AIClient: Sendable {
         ], maxTokens: nil)
     }
 
+    /// 图片取文字（OpenAI 兼容视觉接口）：PNG base64 走 `image_url`，
+    /// 提示词要求原样输出图中文字。仅远端 HTTP 模式可用（本地 CLI 无视觉能力，
+    /// 调用方应回退本地 OCR）。
+    func transcribeImage(_ png: Data) async throws -> String {
+        let imagePart: [String: Any] = [
+            "type": "image_url",
+            "image_url": ["url": "data:image/png;base64,\(png.base64EncodedString())"],
+        ]
+        let textPart: [String: Any] = [
+            "type": "text",
+            "text": "Extract all text visible in this image exactly as shown, preserving line breaks and reading order. Output only the extracted text — no explanations, no code fences.",
+        ]
+        let reply = try await complete(messages: [
+            ["role": "user", "content": [imagePart, textPart]],
+        ], maxTokens: nil)
+        return Self.stripFences(reply)
+    }
+
     // MARK: - Request / response
 
     static func endpointURL(baseURL: String) -> URL? {
@@ -128,7 +146,7 @@ struct AIClient: Sendable {
         return url
     }
 
-    func makeRequest(messages: [[String: String]], maxTokens: Int?) throws -> URLRequest {
+    func makeRequest(messages: [[String: Any]], maxTokens: Int?) throws -> URLRequest {
         guard let url = Self.endpointURL(baseURL: config.baseURL) else { throw AIError.badBaseURL }
         var body: [String: Any] = [
             "model": config.model,
@@ -157,7 +175,7 @@ struct AIClient: Sendable {
         return request
     }
 
-    private func complete(messages: [[String: String]], maxTokens: Int?) async throws -> String {
+    private func complete(messages: [[String: Any]], maxTokens: Int?) async throws -> String {
         guard !config.model.isEmpty else { throw AIError.notConfigured }
         let request = try makeRequest(messages: messages, maxTokens: maxTokens)
         let data: Data

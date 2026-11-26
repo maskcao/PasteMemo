@@ -1044,6 +1044,7 @@ struct PreviewPane: View {
 struct ScreenshotSettingsPane: View {
     @AppStorage("screenshotDelaySeconds") private var delaySeconds = 0
     @AppStorage("screenshotTranslationEngine") private var translateEngine = "local"
+    @AppStorage("screenshotOCREngine") private var ocrEngine = "local"
 
     private let delayOptions = [0, 3, 5, 10]
 
@@ -1072,6 +1073,16 @@ struct ScreenshotSettingsPane: View {
                 .pickerStyle(.segmented)
             } header: {
                 Text(L10n.tr("settings.screenshot.translate"))
+            }
+
+            Section {
+                Picker(L10n.tr("settings.screenshot.ocr"), selection: $ocrEngine) {
+                    Text(L10n.tr("settings.screenshot.ocr.local")).tag("local")
+                    Text(L10n.tr("settings.screenshot.ocr.ai")).tag("ai")
+                }
+                .pickerStyle(.segmented)
+            } header: {
+                Text(L10n.tr("settings.screenshot.ocr"))
             }
 
             Section {

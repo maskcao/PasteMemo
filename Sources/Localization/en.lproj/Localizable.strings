@@ -215,6 +215,9 @@
 "settings.screenshot.translate" = "Screenshot translation";
 "settings.screenshot.translate.local" = "Local system";
 "settings.screenshot.translate.ai" = "AI model";
+"settings.screenshot.ocr" = "Text extraction";
+"settings.screenshot.ocr.local" = "Local OCR";
+"settings.screenshot.ocr.ai" = "AI model";
 "editor.translate.ai.prompt" = "Translate the following text into %1$@. Output only the translation, with no explanation. If the text is already in %1$@, translate it into Chinese.";
 "settings.showLinkURL" = "Show URL instead of page title for links";
 "settings.webPreview" = "Web preview";

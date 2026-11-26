@@ -283,6 +283,9 @@
 "settings.screenshot.translate" = "스크린샷 번역";
 "settings.screenshot.translate.local" = "로컬(시스템)";
 "settings.screenshot.translate.ai" = "AI 모델";
+"settings.screenshot.ocr" = "텍스트 추출";
+"settings.screenshot.ocr.local" = "로컬 OCR";
+"settings.screenshot.ocr.ai" = "AI 모델";
 "editor.translate.ai.prompt" = "다음 텍스트를 %1$@(으)로 번역하세요. 설명 없이 번역 결과만 출력하세요. 텍스트가 이미 %1$@인 경우 중국어로 번역하세요.";
 "settings.showLinkURL" = "링크를 페이지 제목 대신 URL로 표시";
 "settings.webPreview" = "웹 미리보기";

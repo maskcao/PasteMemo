@@ -291,6 +291,9 @@
 "settings.screenshot.translate" = "スクリーンショット翻訳";
 "settings.screenshot.translate.local" = "ローカル（システム）";
 "settings.screenshot.translate.ai" = "AIモデル";
+"settings.screenshot.ocr" = "文字抽出";
+"settings.screenshot.ocr.local" = "ローカルOCR";
+"settings.screenshot.ocr.ai" = "AIモデル";
 "editor.translate.ai.prompt" = "次のテキストを%1$@に翻訳してください。説明なしで翻訳結果のみを出力してください。テキストが既に%1$@の場合は中国語に翻訳してください。";
 "settings.ocr" = "OCR";
 "settings.ocr.enable" = "画像OCRを有効にする";

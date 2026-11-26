@@ -283,6 +283,9 @@
 "settings.screenshot.translate" = "Screenshot-Übersetzung";
 "settings.screenshot.translate.local" = "Lokal (System)";
 "settings.screenshot.translate.ai" = "KI-Modell";
+"settings.screenshot.ocr" = "Textextraktion";
+"settings.screenshot.ocr.local" = "Lokale OCR";
+"settings.screenshot.ocr.ai" = "KI-Modell";
 "editor.translate.ai.prompt" = "Übersetzen Sie den folgenden Text in %1$@. Geben Sie nur die Übersetzung aus, ohne Erklärung. Falls der Text bereits in %1$@ ist, übersetzen Sie ihn ins Chinesische.";
 "settings.showLinkURL" = "URL statt Seitentitel für Links anzeigen";
 "settings.webPreview" = "Webvorschau";

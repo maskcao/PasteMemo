@@ -215,6 +215,9 @@
 "settings.screenshot.translate" = "截图翻译";
 "settings.screenshot.translate.local" = "系统本地翻译";
 "settings.screenshot.translate.ai" = "AI 大模型";
+"settings.screenshot.ocr" = "提取文字";
+"settings.screenshot.ocr.local" = "本地 OCR";
+"settings.screenshot.ocr.ai" = "AI 大模型";
 "editor.translate.ai.prompt" = "请将以下文本翻译成%1$@，只输出译文，不要解释；若文本已是%1$@，请翻译成中文。";
 "settings.showLinkURL" = "链接显示原始网址而非页面标题";
 "settings.webPreview" = "网页预览";

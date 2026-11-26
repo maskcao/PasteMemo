@@ -205,6 +205,9 @@
 "settings.screenshot.translate" = "Terjemahan tangkapan";
 "settings.screenshot.translate.local" = "Lokal (sistem)";
 "settings.screenshot.translate.ai" = "Model AI";
+"settings.screenshot.ocr" = "Ekstraksi teks";
+"settings.screenshot.ocr.local" = "OCR lokal";
+"settings.screenshot.ocr.ai" = "Model AI";
 "editor.translate.ai.prompt" = "Terjemahkan teks berikut ke %1$@. Tampilkan hanya terjemahannya, tanpa penjelasan. Jika teks sudah dalam %1$@, terjemahkan ke bahasa Mandarin.";
 "settings.showLinkURL" = "Tampilkan URL alih-alih judul halaman untuk tautan";
 "settings.webPreview" = "Pratinjau web";

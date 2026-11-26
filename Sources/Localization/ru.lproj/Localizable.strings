@@ -205,6 +205,9 @@
 "settings.screenshot.translate" = "Перевод скриншота";
 "settings.screenshot.translate.local" = "Локальный (системный)";
 "settings.screenshot.translate.ai" = "ИИ-модель";
+"settings.screenshot.ocr" = "Извлечение текста";
+"settings.screenshot.ocr.local" = "Локальный OCR";
+"settings.screenshot.ocr.ai" = "ИИ-модель";
 "editor.translate.ai.prompt" = "Переведите следующий текст на %1$@ язык. Выводите только перевод, без пояснений. Если текст уже на %1$@, переведите его на китайский.";
 "settings.showLinkURL" = "Показывать URL вместо заголовка для ссылок";
 "settings.webPreview" = "Веб-предпросмотр";
