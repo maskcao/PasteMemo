@@ -20,10 +20,10 @@ enum AppFocusRestorer {
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
             // 可能已经被别的收尾动作推回前台，没必要再抢
             let front = NSWorkspace.shared.frontmostApplication
-            guard front.processIdentifier != app.processIdentifier else { return }
+            guard front?.processIdentifier != app.processIdentifier else { return }
             app.activate(from: NSRunningApplication.current, options: [.activateAllWindows])
             // activate 生效有轻微延迟：目标应用此刻还没接管前台就多安排一轮
-            if NSWorkspace.shared.frontmostApplication.processIdentifier != app.processIdentifier {
+            if NSWorkspace.shared.frontmostApplication?.processIdentifier != app.processIdentifier {
                 Self.restore(app, delay: 0.4, attempts: attempts - 1)
             }
         }
