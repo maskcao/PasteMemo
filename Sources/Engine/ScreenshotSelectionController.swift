@@ -108,13 +108,18 @@ final class ScreenshotSelectionController: NSObject {
         // 记录「之前是谁在前台」：begin() 会把自己激活，closeAll 收尾时还回去
         restoredApp = NSWorkspace.shared.frontmostApplication
         if let app = restoredApp {
-            DiagnosticLog.log("FOCUS begin: frontmost=\(app.localizedName ?? "?") (\(app.bundleIdentifier ?? "?")) isActive-before=\(app.isActive)")
+            DiagnosticLog.log("FOCUS begin(nonactivating): frontmost=\(app.localizedName ?? "?") (\(app.bundleIdentifier ?? "?")) isActive-before=\(app.isActive)")
         }
         let hideDock = UserDefaults.standard.bool(forKey: "hideDockIcon")
         if !hideDock {
             NSApp.setActivationPolicy(.accessory)
         }
-        NSApp.activate(ignoringOtherApps: true)
+        // 不再 NSApp.activate：全屏 RDP（Windows App）把 macOS 激活状态和
+        // 「远端输入通道」绑在一起——截图激活本应用会取消它的输入转发，
+        // 之后哪怕把前台还回去（FOCUS 日志已证实 isActive 恢复为 true），
+        // 通道也不会重新 engage（单击被吃、滚轮退回本地缩放的根因）。
+        // 改 nonactivating 面板：面板照常成为 key 收键盘/鼠标，但应用不被激活，
+        // 前台应用（RDP）的输入通道全程不受影响。
         for (screen, image, scale) in frozen {
             let panel = SelectionPanel(
                 screen: screen, image: image, pixelScale: scale, owner: self, windows: windows
@@ -249,7 +254,14 @@ final class ScreenshotSelectionController: NSObject {
             windows: [(rect: CGRect, area: CGFloat)]
         ) {
             self.coveredScreen = screen
-            super.init(contentRect: screen.frame, styleMask: .borderless, backing: .buffered, defer: false)
+            // nonactivating：面板可成为 key（收 Esc/回车/方向键），但 AppKit 不会
+            // 因此激活本应用——截图全程不碰前台应用的激活状态。
+            // 这是修「RDP 截图后远程主机点不动」的根因修复（配合 begin() 不再 activate）。
+            super.init(
+                contentRect: screen.frame,
+                styleMask: [.borderless, .nonactivatingPanel],
+                backing: .buffered, defer: false
+            )
             level = .screenSaver
             // A panel created after a theme switch does not reliably inherit
             // NSApp.appearance. Pin it before it first appears, otherwise the
