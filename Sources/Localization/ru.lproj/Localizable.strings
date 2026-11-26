@@ -300,6 +300,7 @@
 "editor.tool.translate" = "Перевести";
 "editor.translate.working" = "Перевод…";
 "editor.translate.failed" = "Не удалось перевести";
+"editor.translate.poweredBy" = "Powered By %1$@";
 "editor.translate.result.title" = "Результат перевода";
 "editor.tool.askAI" = "Спросить ИИ";
 "editor.askAI.working" = "ИИ анализирует…";

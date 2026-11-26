@@ -138,6 +138,7 @@
 "editor.tool.translate" = "번역";
 "editor.translate.working" = "번역 중…";
 "editor.translate.failed" = "번역 실패";
+"editor.translate.poweredBy" = "Powered By %1$@";
 "editor.translate.result.title" = "번역 결과";
 "editor.tool.askAI" = "AI에게 질문";
 "editor.askAI.working" = "AI 분석 중…";

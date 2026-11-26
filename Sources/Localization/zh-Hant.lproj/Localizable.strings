@@ -299,6 +299,7 @@
 "editor.tool.translate" = "翻譯";
 "editor.translate.working" = "翻譯中…";
 "editor.translate.failed" = "翻譯失敗";
+"editor.translate.poweredBy" = "Powered By %1$@";
 "editor.translate.result.title" = "翻譯結果";
 "editor.tool.askAI" = "問AI";
 "editor.askAI.working" = "AI 分析中…";

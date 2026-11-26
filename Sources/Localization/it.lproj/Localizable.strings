@@ -300,6 +300,7 @@
 "editor.tool.translate" = "Traduci";
 "editor.translate.working" = "Traduzione in corso…";
 "editor.translate.failed" = "Traduzione non riuscita";
+"editor.translate.poweredBy" = "Con %1$@";
 "editor.translate.result.title" = "Risultato della traduzione";
 "editor.tool.askAI" = "Chiedi all'IA";
 "editor.askAI.working" = "L'IA sta analizzando…";

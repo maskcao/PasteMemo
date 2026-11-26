@@ -138,6 +138,7 @@
 "editor.tool.translate" = "Übersetzen";
 "editor.translate.working" = "Wird übersetzt…";
 "editor.translate.failed" = "Übersetzung fehlgeschlagen";
+"editor.translate.poweredBy" = "Erstellt mit %1$@";
 "editor.translate.result.title" = "Übersetzungsergebnis";
 "editor.tool.askAI" = "KI fragen";
 "editor.askAI.working" = "KI analysiert…";

@@ -1612,9 +1612,18 @@ final class ScreenshotSelectionSurfaceView: NSView {
                     )
                     self.hideChip()
                     if let sel = self.selection {
+                        // AI 引擎出结果时，结果面板左下角署名模型品牌名（去掉版本号）
+                        let attribution: String?
+                        if translated.engine == .ai,
+                           let model = ScreenshotTranslationService.aiModelDisplayName {
+                            attribution = L10n.tr("editor.translate.poweredBy", model)
+                        } else {
+                            attribution = nil
+                        }
                         self.presentResultPanel(
                             title: L10n.tr("editor.translate.result.title"),
-                            text: translated,
+                            text: translated.text,
+                            attribution: attribution,
                             selection: sel
                         )
                     }
@@ -1688,12 +1697,12 @@ final class ScreenshotSelectionSurfaceView: NSView {
     }
 
     /// 提取文字 / 翻译共用结果面板：标题可换，正文与复制按钮一致。
-    private func presentResultPanel(title: String, text: String, selection: CGRect) {
+    private func presentResultPanel(title: String, text: String, attribution: String? = nil, selection: CGRect) {
         ocrPanel?.removeFromSuperview()
         // 结果面板出现时收起工具条与二级面板（浮引：进入结果态后不再显示工具条）
         toolbar.isHidden = true
         optionsBar.isHidden = true
-        let panel = OCRResultPanel(title: title, text: text) { [weak self] in
+        let panel = OCRResultPanel(title: title, text: text, attribution: attribution) { [weak self] in
             guard let self else { return }
             self.ocrPanel?.removeFromSuperview()
             self.ocrPanel = nil
@@ -3359,9 +3368,17 @@ final class OCRResultPanel: NSView {
 
     private let text: String
     private let onClose: () -> Void
+    /// 左下角模型署名（AI 翻译时显示 Powered By xxx），nil = 不显示
+    private let attribution: String?
 
-    init(title titleText: String, text: String, onClose: @escaping () -> Void) {
+    init(
+        title titleText: String,
+        text: String,
+        attribution: String? = nil,
+        onClose: @escaping () -> Void
+    ) {
         self.text = text
+        self.attribution = attribution
         self.onClose = onClose
         super.init(frame: .zero)
         // 跟随系统深浅色：不再强制浅色，背景与文字都用语义色，深浅色下都清晰
@@ -3424,6 +3441,14 @@ final class OCRResultPanel: NSView {
         copyButton.translatesAutoresizingMaskIntoConstraints = false
         addSubview(copyButton)
 
+        // 左下角模型署名：仅 AI 翻译结果显示，系统翻译不显示
+        let attributionView = NSTextField(labelWithString: attribution ?? "")
+        attributionView.font = .systemFont(ofSize: 11, weight: .medium)
+        attributionView.textColor = .tertiaryLabelColor
+        attributionView.translatesAutoresizingMaskIntoConstraints = false
+        attributionView.isHidden = attribution == nil
+        addSubview(attributionView)
+
         NSLayoutConstraint.activate([
             title.topAnchor.constraint(equalTo: topAnchor, constant: 20),
             title.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 24),
@@ -3439,6 +3464,9 @@ final class OCRResultPanel: NSView {
             copyButton.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -20),
             copyButton.widthAnchor.constraint(equalToConstant: 84),
             copyButton.heightAnchor.constraint(equalToConstant: 34),
+            attributionView.centerYAnchor.constraint(equalTo: copyButton.centerYAnchor),
+            attributionView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 24),
+            attributionView.trailingAnchor.constraint(lessThanOrEqualTo: copyButton.leadingAnchor, constant: -8),
         ])
     }
 

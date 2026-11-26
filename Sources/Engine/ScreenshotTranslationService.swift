@@ -27,11 +27,32 @@ final class ScreenshotTranslationService {
         (UserDefaults.standard.string(forKey: "screenshotTranslationEngine") ?? "local") == "ai"
     }
 
+    /// 本次翻译实际走的引擎（结果面板要据此显示 Powered By 脚注）
+    enum TranslationEngine: Sendable { case local, ai }
+
+    struct TranslatedText: Sendable {
+        let text: String
+        let engine: TranslationEngine
+    }
+
+    /// AI 模式实际处理翻译的模型显示名：取品牌名，去掉版本号——
+    /// 如 "MiniMax-M3.1-Flash" → "MinMax"、"DeepSeek-V4.1" → "DeepSeek"。
+    static var aiModelDisplayName: String? {
+        let raw = AIProviderSettings.mode == .local
+            ? AIProviderSettings.cliModel
+            : AIProviderSettings.model
+        let firstSegment = raw.components(separatedBy: "-").first ?? raw
+        let brand = firstSegment.filter { !$0.isNumber }
+        let trimmed = brand.trimmingCharacters(in: .whitespaces)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
     /// 翻译入口：按「截图」设置走系统本地翻译或已配置的大模型；
     /// 大模型未配置 / 调用失败时自动回退系统翻译，保证功能永远可用。
-    func translateWithEngine(text: String, in window: NSWindow?) async throws -> String {
+    func translateWithEngine(text: String, in window: NSWindow?) async throws -> TranslatedText {
         guard Self.aiEngine, AIProviderSettings.isConfigured else {
-            return try await translate(text: text, in: window)
+            let local = try await translate(text: text, in: window)
+            return TranslatedText(text: local, engine: .local)
         }
         do {
             // 目标语言与系统翻译同一套推断（源语言识别 + 首选语言取反）
@@ -55,11 +76,12 @@ final class ScreenshotTranslationService {
                 throw NSError(domain: "ScreenshotTranslation", code: 3,
                               userInfo: [NSLocalizedDescriptionKey: L10n.tr("editor.translate.failed")])
             }
-            return trimmed
+            return TranslatedText(text: trimmed, engine: .ai)
         } catch {
             // 大模型不可用（没配好 / 超时 / 网络）：回退系统本地翻译
             NSLog("AI translation failed, falling back to system translation: %@", String(describing: error))
-            return try await translate(text: text, in: window)
+            let local = try await translate(text: text, in: window)
+            return TranslatedText(text: local, engine: .local)
         }
     }
 

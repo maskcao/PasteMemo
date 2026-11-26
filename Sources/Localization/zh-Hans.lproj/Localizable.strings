@@ -327,6 +327,7 @@
 "editor.tool.translate" = "翻译";
 "editor.translate.working" = "翻译中…";
 "editor.translate.failed" = "翻译失败";
+"editor.translate.poweredBy" = "Powered By %1$@";
 "editor.translate.result.title" = "翻译结果";
 "editor.tool.askAI" = "问AI";
 "editor.askAI.working" = "AI 分析中…";

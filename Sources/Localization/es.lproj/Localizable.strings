@@ -138,6 +138,7 @@
 "editor.tool.translate" = "Traducir";
 "editor.translate.working" = "Traduciendo…";
 "editor.translate.failed" = "Error al traducir";
+"editor.translate.poweredBy" = "Con %1$@";
 "editor.translate.result.title" = "Resultado de traducción";
 "editor.tool.askAI" = "Preguntar a la IA";
 "editor.askAI.working" = "La IA está analizando…";

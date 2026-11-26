@@ -146,6 +146,7 @@
 "editor.tool.translate" = "翻訳";
 "editor.translate.working" = "翻訳中…";
 "editor.translate.failed" = "翻訳失敗";
+"editor.translate.poweredBy" = "Powered By %1$@";
 "editor.translate.result.title" = "翻訳結果";
 "editor.tool.askAI" = "AIに質問";
 "editor.askAI.working" = "AIが分析中…";

@@ -300,6 +300,7 @@
 "editor.tool.translate" = "Terjemahkan";
 "editor.translate.working" = "Menerjemahkan…";
 "editor.translate.failed" = "Gagal menerjemahkan";
+"editor.translate.poweredBy" = "Powered By %1$@";
 "editor.translate.result.title" = "Hasil terjemahan";
 "editor.tool.askAI" = "Tanya AI";
 "editor.askAI.working" = "AI sedang menganalisis…";
