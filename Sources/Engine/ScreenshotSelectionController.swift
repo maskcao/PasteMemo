@@ -107,6 +107,9 @@ final class ScreenshotSelectionController: NSObject {
         isActive = true
         // 记录「之前是谁在前台」：begin() 会把自己激活，closeAll 收尾时还回去
         restoredApp = NSWorkspace.shared.frontmostApplication
+        if let app = restoredApp {
+            DiagnosticLog.log("FOCUS begin: frontmost=\(app.localizedName ?? "?") (\(app.bundleIdentifier ?? "?")) isActive-before=\(app.isActive)")
+        }
         let hideDock = UserDefaults.standard.bool(forKey: "hideDockIcon")
         if !hideDock {
             NSApp.setActivationPolicy(.accessory)
@@ -224,6 +227,7 @@ final class ScreenshotSelectionController: NSObject {
         // 同步或单轮 async 的 activate 会被压过（表现为 RDP 单击被吞、滚轮变缩放）。
         // 恢复器内部「延迟 → 校验 → 重试」，直到前台真正归位。
         if let app = restoredApp {
+            DiagnosticLog.log("FOCUS closeAll: restore \(app.localizedName ?? "?") (\(app.bundleIdentifier ?? "?")) isActive-now=\(app.isActive), ourAppActive=\(NSRunningApplication.current.isActive)")
             AppFocusRestorer.restore(app)
         }
         restoredApp = nil
