@@ -145,6 +145,11 @@
 "editor.askAI.result.title" = "KI fragen";
 "editor.askAI.failed" = "KI-Anfrage fehlgeschlagen";
 "editor.askAI.prompt" = "Analysiere diesen Inhalt: fasse die Kernpunkte zusammen, hebe die wichtigen Informationen hervor und weise auf Fehler oder Risiken hin. Gib das Analyseergebnis direkt aus.";
+"editor.askAI.action.ocr" = "Text extrahieren";
+"editor.askAI.action.summarize" = "Kernpunkte";
+"editor.askAI.action.translate" = "Übersetzen";
+"editor.askAI.summarizePrompt" = "Fassen Sie die Kernpunkte des folgenden Texts zusammen und listen Sie sie kurz in Stichpunkten auf. Geben Sie nur die Liste aus.";
+"editor.askAI.translatePrompt" = "Übersetzen Sie den folgenden Text in %1$@. Geben Sie nur die Übersetzung aus, ohne Erklärung. Falls der Text bereits in %1$@ ist, übersetzen Sie ihn ins Chinesische.";
 "editor.tool.pin" = "Am Bildschirm anheften";
 "editor.copy" = "Kopieren";
 "editor.highlight.placeholder" = "Max. 16 Zeichen";

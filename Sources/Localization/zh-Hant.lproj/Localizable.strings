@@ -309,6 +309,11 @@
 "editor.askAI.result.title" = "問AI";
 "editor.askAI.failed" = "AI 請求失敗";
 "editor.askAI.prompt" = "請分析這段內容：總結要點，指出關鍵資訊；如有錯誤或風險請一併指出。直接輸出分析結果。";
+"editor.askAI.action.ocr" = "提取文字";
+"editor.askAI.action.summarize" = "要點提煉";
+"editor.askAI.action.translate" = "翻譯";
+"editor.askAI.summarizePrompt" = "請提煉以下文字的要点，用簡潔的條目列出。只輸出條目列表，不要多餘說明。";
+"editor.askAI.translatePrompt" = "請將以下文本翻譯成%1$@，只輸出譯文，不要解釋；若文本已是%1$@，請翻譯成中文。";
 "editor.tool.pin" = "釘在螢幕";
 "editor.copy" = "複製";
 "editor.highlight.placeholder" = "最多輸入 16 個字元";

@@ -310,6 +310,11 @@
 "editor.askAI.result.title" = "Chiedi all'IA";
 "editor.askAI.failed" = "Richiesta all'IA non riuscita";
 "editor.askAI.prompt" = "Analizza questo contenuto: riassumi i punti chiave, evidenzia le informazioni importanti e segnala eventuali errori o rischi. Fornisci direttamente il risultato dell'analisi.";
+"editor.askAI.action.ocr" = "Estrai testo";
+"editor.askAI.action.summarize" = "Punti chiave";
+"editor.askAI.action.translate" = "Traduci";
+"editor.askAI.summarizePrompt" = "Estrai i punti chiave dal testo seguente ed elencali in modo conciso con punti elenco. Mostra solo l’elenco.";
+"editor.askAI.translatePrompt" = "Traduci il testo seguente in %1$@. Mostra solo la traduzione, senza spiegazioni. Se il testo è già in %1$@, traducilo in cinese.";
 "editor.tool.pin" = "Fissa sullo schermo";
 "editor.copy" = "Copia";
 "editor.highlight.placeholder" = "Max 16 caratteri";

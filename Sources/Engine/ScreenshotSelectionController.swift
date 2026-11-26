@@ -1,5 +1,6 @@
 import AppKit
 import CoreGraphics
+import NaturalLanguage
 import UniformTypeIdentifiers
 import Vision
 
@@ -385,6 +386,9 @@ final class ScreenshotSelectionSurfaceView: NSView {
 
     private var toolbar: SelectionToolbar!
     private var optionsBar: SelectionOptionsBar!
+    /// 「问AI」二级动作条（提取文字 / 要点提炼 / 翻译），挂在主工具条下方
+    private var aiActionPanel: AIActionPanel!
+    private var aiActionPanelVisible = false
 
     private enum ResizeEdge { case none, topLeft, top, topRight, left, right, bottomLeft, bottom, bottomRight }
 
@@ -456,6 +460,9 @@ final class ScreenshotSelectionSurfaceView: NSView {
         optionsBar = SelectionOptionsBar(target: self, action: #selector(toolbarAction(_:)))
         optionsBar.isHidden = true
         addSubview(optionsBar)
+        aiActionPanel = AIActionPanel(target: self, action: #selector(toolbarAction(_:)))
+        aiActionPanel.isHidden = true
+        addSubview(aiActionPanel)
         applyRememberedSettings()
     }
 
@@ -534,22 +541,30 @@ final class ScreenshotSelectionSurfaceView: NSView {
         let targetAppearance = appearance ?? NSApp.effectiveAppearance
         toolbar?.appearance = targetAppearance
         optionsBar?.appearance = targetAppearance
+        aiActionPanel?.appearance = targetAppearance
         toolbar?.refreshForAppearance(targetAppearance)
         optionsBar?.refreshForAppearance(targetAppearance)
+        aiActionPanel?.refreshForAppearance(targetAppearance)
     }
 
     private func positionToolbar() {
         guard let sel = selection, dragMode == .none else {
             toolbar.isHidden = true
             optionsBar.isHidden = true
+            aiActionPanel.isHidden = true
+            aiActionPanelVisible = false
             return
         }
         toolbar.isHidden = false
         optionsBar.isHidden = activeTool == nil
+        aiActionPanel.isHidden = !aiActionPanelVisible
         let mainSize = toolbar.fittingSize
         let optionSize = optionsBar.isHidden ? .zero : optionsBar.fittingSize
+        let aiSize = aiActionPanel.isHidden ? .zero : aiActionPanel.fittingSize
         let gap: CGFloat = 6
-        let totalHeight = mainSize.height + (optionSize.height > 0 ? gap + optionSize.height : 0)
+        var totalHeight = mainSize.height
+        totalHeight += optionSize.height > 0 ? gap + optionSize.height : 0
+        totalHeight += aiSize.height > 0 ? gap + aiSize.height : 0
 
         func clampX(_ width: CGFloat, center: CGFloat) -> CGFloat {
             max(8, min(center - width / 2, bounds.width - width - 8))
@@ -563,11 +578,20 @@ final class ScreenshotSelectionSurfaceView: NSView {
             x: clampX(mainSize.width, center: sel.midX), y: y,
             width: mainSize.width, height: mainSize.height
         )
+        var nextY = y + mainSize.height
         if !optionsBar.isHidden {
             optionsBar.frame = NSRect(
                 x: clampX(optionSize.width, center: sel.midX), y: y + mainSize.height + gap,
                 width: optionSize.width, height: optionSize.height
             )
+            nextY = y + mainSize.height + gap + optionSize.height
+        }
+        if !aiActionPanel.isHidden {
+            aiActionPanel.frame = NSRect(
+                x: clampX(aiSize.width, center: sel.midX), y: nextY + gap,
+                width: aiSize.width, height: aiSize.height
+            )
+            nextY += gap + aiSize.height
         }
         window?.invalidateCursorRects(for: self)
     }
@@ -577,6 +601,8 @@ final class ScreenshotSelectionSurfaceView: NSView {
         if ocrPanel != nil {
             toolbar.isHidden = true
             optionsBar.isHidden = true
+            aiActionPanel.isHidden = true
+            aiActionPanelVisible = false
             return
         }
         toolbar.update(
@@ -734,6 +760,7 @@ final class ScreenshotSelectionSurfaceView: NSView {
         annotations = []
         undoStack = []
         redoStack = []
+        aiActionPanelVisible = false
         dragMode = .drawing
         dragOrigin = point
         selection = CGRect(origin: point, size: .zero)
@@ -1052,7 +1079,28 @@ final class ScreenshotSelectionSurfaceView: NSView {
             return
         }
 
-        guard let control = sender as? NSControl else { return }
+        guard let control = sender as? NSControl else {
+            // 「问AI」二级条的胶囊按钮是 NSView（非 NSControl），单独路由
+            if let chip = sender as? AIActionChip {
+                switch chip.chipTag {
+                case 701:
+                    aiActionPanelVisible = false
+                    needsLayout = true
+                    aiExtractText()
+                case 702:
+                    aiActionPanelVisible = false
+                    needsLayout = true
+                    aiSummarize()
+                case 703:
+                    aiActionPanelVisible = false
+                    needsLayout = true
+                    aiTranslate()
+                default:
+                    break
+                }
+            }
+            return
+        }
 
         if let slider = control as? NSSlider {
             switch control.tag {
@@ -1073,7 +1121,7 @@ final class ScreenshotSelectionSurfaceView: NSView {
 
         switch control.tag {
         case 15:
-            askAI()
+            toggleAIActionPanel()
         case 1:
             if activeTool == .rectangle || activeTool == .ellipse {
                 activeTool = nil
@@ -1157,6 +1205,156 @@ final class ScreenshotSelectionSurfaceView: NSView {
         activeTool = activeTool == kind ? nil : kind
         needsDisplay = true
         syncToolbar()
+    }
+
+    /// 「问AI」按钮：展开 / 收起二级动作条（提取文字 / 要点提炼 / 翻译）
+    private func toggleAIActionPanel() {
+        aiActionPanelVisible.toggle()
+        needsLayout = true
+    }
+
+    /// 二级条·提取文字：大模型视觉能力直接读截图取字（OpenAI 兼容 image_url）
+    private func aiExtractText() {
+        guard let png = croppedBasePNG() else { return }
+        guard AIProviderSettings.isConfigured, AIProviderSettings.mode == .remote else {
+            showChip(L10n.tr("automation.ai.notConfigured"), duration: 4)
+            return
+        }
+        showChip(L10n.tr("editor.ocr.working"), duration: 60)
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                let answer = try await AIClient(config: AIProviderSettings.snapshot())
+                    .transcribeImage(png)
+                let text = answer.trimmingCharacters(in: .whitespacesAndNewlines)
+                self.hideChip()
+                guard !text.isEmpty else {
+                    self.showChip(L10n.tr("editor.ocr.empty"))
+                    return
+                }
+                let pasteboard = NSPasteboard.general
+                pasteboard.clearContents()
+                pasteboard.setString(text, forType: .string)
+                if let sel = self.selection {
+                    let attribution = AIProviderSettings.modelDisplayName.map {
+                        L10n.tr("editor.translate.poweredBy", $0)
+                    }
+                    self.presentResultPanel(
+                        title: L10n.tr("editor.askAI.action.ocr"),
+                        text: text,
+                        attribution: attribution,
+                        selection: sel
+                    )
+                }
+                self.showChip(L10n.tr("editor.ocr.copied"))
+            } catch {
+                self.hideChip()
+                self.showChip(L10n.tr("editor.ocr.failed"), duration: 4)
+            }
+        }
+    }
+
+    /// 二级条·要点提炼：本地 OCR 取文字 → 大模型总结
+    private func aiSummarize() {
+        guard let png = croppedBasePNG() else { return }
+        guard AIProviderSettings.isConfigured else {
+            showChip(L10n.tr("automation.ai.notConfigured"), duration: 4)
+            return
+        }
+        showChip(L10n.tr("editor.askAI.working"), duration: 60)
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                let useMarkdown = UserDefaults.standard.object(forKey: "ocrToMarkdown") as? Bool ?? true
+                let result = try await ImageOCRService.shared.recognizeText(from: png, markdown: useMarkdown)
+                let text = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !text.isEmpty else {
+                    self.hideChip()
+                    self.showChip(L10n.tr("editor.ocr.empty"))
+                    return
+                }
+                let limited = String(text.prefix(AIProviderSettings.maxContentLength))
+                let prompt = L10n.tr("editor.askAI.summarizePrompt")
+                let answer: String
+                if AIProviderSettings.mode == .local {
+                    answer = try await AICLIBackend(config: AIProviderSettings.cliSnapshot())
+                        .transform(prompt: prompt, content: limited)
+                } else {
+                    answer = try await AIClient(config: AIProviderSettings.snapshot())
+                        .transform(prompt: prompt, content: limited)
+                }
+                self.hideChip()
+                if let sel = self.selection {
+                    let attribution = AIProviderSettings.modelDisplayName.map {
+                        L10n.tr("editor.translate.poweredBy", $0)
+                    }
+                    self.presentResultPanel(
+                        title: L10n.tr("editor.askAI.action.summarize"),
+                        text: answer,
+                        attribution: attribution,
+                        selection: sel
+                    )
+                }
+            } catch {
+                self.hideChip()
+                self.showChip(L10n.tr("editor.askAI.failed"), duration: 4)
+            }
+        }
+    }
+
+    /// 二级条·翻译：本地 OCR 取文字 → 大模型翻译（目标语言 = 系统首选语言，
+    /// 原文就是该语言时翻成另一首选语言；CLI 无视觉但可用文字链路）
+    private func aiTranslate() {
+        guard let png = croppedBasePNG() else { return }
+        guard AIProviderSettings.isConfigured else {
+            showChip(L10n.tr("automation.ai.notConfigured"), duration: 4)
+            return
+        }
+        showChip(L10n.tr("editor.translate.working"), duration: 60)
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                let useMarkdown = UserDefaults.standard.object(forKey: "ocrToMarkdown") as? Bool ?? true
+                let result = try await ImageOCRService.shared.recognizeText(from: png, markdown: useMarkdown)
+                let text = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !text.isEmpty else {
+                    self.hideChip()
+                    self.showChip(L10n.tr("editor.ocr.empty"))
+                    return
+                }
+                // 目标语言：系统首选语言；原文已是该语言则翻成中文/英文（与系统翻译同规则）
+                let preferred = Locale.preferredLanguages.first ?? "en"
+                let detected = NLLanguageRecognizer.dominantLanguage(for: text)?.rawValue.lowercased()
+                let target = (detected != nil && detected!.hasPrefix(preferred.lowercased()))
+                    ? (preferred.lowercased().hasPrefix("zh") ? "English" : "Simplified Chinese")
+                    : (preferred.lowercased().hasPrefix("zh") ? "Simplified Chinese" : "English")
+                let prompt = L10n.tr("editor.askAI.translatePrompt", target)
+                let limited = String(text.prefix(AIProviderSettings.maxContentLength))
+                let answer: String
+                if AIProviderSettings.mode == .local {
+                    answer = try await AICLIBackend(config: AIProviderSettings.cliSnapshot())
+                        .transform(prompt: prompt, content: limited)
+                } else {
+                    answer = try await AIClient(config: AIProviderSettings.snapshot())
+                        .transform(prompt: prompt, content: limited)
+                }
+                self.hideChip()
+                if let sel = self.selection {
+                    let attribution = AIProviderSettings.modelDisplayName.map {
+                        L10n.tr("editor.translate.poweredBy", $0)
+                    }
+                    self.presentResultPanel(
+                        title: L10n.tr("editor.translate.result.title"),
+                        text: answer,
+                        attribution: attribution,
+                        selection: sel
+                    )
+                }
+            } catch {
+                self.hideChip()
+                self.showChip(L10n.tr("editor.translate.failed"), duration: 4)
+            }
+        }
     }
 
     /// FloGravity 的 More：折叠次要标注工具。
@@ -1427,6 +1625,10 @@ final class ScreenshotSelectionSurfaceView: NSView {
             if draft != nil {
                 draft = nil
                 needsDisplay = true
+            } else if aiActionPanelVisible {
+                // 先收起「问AI」二级条，再逐层退出
+                aiActionPanelVisible = false
+                needsLayout = true
             } else if activeTool != nil {
                 activeTool = nil
                 syncToolbar()
@@ -1669,60 +1871,14 @@ final class ScreenshotSelectionSurfaceView: NSView {
         }
     }
 
-    /// 问AI：选区先 OCR 取文字，再交给已配置的 AI 服务分析，结果复用识别结果面板。
-    private func askAI() {
-        guard let png = croppedBasePNG() else { return }
-        guard AIProviderSettings.isConfigured else {
-            showChip(L10n.tr("automation.ai.notConfigured"), duration: 4)
-            return
-        }
-        showChip(L10n.tr("editor.askAI.working"), duration: 60)
-        Task { [weak self] in
-            guard let self else { return }
-            do {
-                // 与剪贴板 OCR 同一条链路：读同一个 markdown 开关（默认开）。
-                let useMarkdown = UserDefaults.standard.object(forKey: "ocrToMarkdown") as? Bool ?? true
-                let result = try await ImageOCRService.shared.recognizeText(from: png, markdown: useMarkdown)
-                let text = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !text.isEmpty else {
-                    self.hideChip()
-                    self.showChip(L10n.tr("editor.ocr.empty"))
-                    return
-                }
-                // 与自动化 aiTransform 同一条长度红线
-                let limited = String(text.prefix(AIProviderSettings.maxContentLength))
-                // 与 ActionExecutor.runAI 同一套后端选择：本地 CLI 或 HTTP 端点
-                let prompt = L10n.tr("editor.askAI.prompt")
-                let answer: String
-                if AIProviderSettings.mode == .local {
-                    answer = try await AICLIBackend(config: AIProviderSettings.cliSnapshot())
-                        .transform(prompt: prompt, content: limited)
-                } else {
-                    answer = try await AIClient(config: AIProviderSettings.snapshot())
-                        .transform(prompt: prompt, content: limited)
-                }
-                self.hideChip()
-                if let sel = self.selection {
-                    self.presentResultPanel(
-                        title: L10n.tr("editor.askAI.result.title"),
-                        text: answer,
-                        selection: sel
-                    )
-                }
-            } catch {
-                self.hideChip()
-                let message = (error as? AIError)?.userMessage ?? L10n.tr("editor.askAI.failed")
-                self.showChip(message, duration: 6)
-            }
-        }
-    }
-
     /// 提取文字 / 翻译共用结果面板：标题可换，正文与复制按钮一致。
     private func presentResultPanel(title: String, text: String, attribution: String? = nil, selection: CGRect) {
         ocrPanel?.removeFromSuperview()
         // 结果面板出现时收起工具条与二级面板（浮引：进入结果态后不再显示工具条）
         toolbar.isHidden = true
         optionsBar.isHidden = true
+        aiActionPanel.isHidden = true
+        aiActionPanelVisible = false
         let panel = OCRResultPanel(title: title, text: text, attribution: attribution) { [weak self] in
             guard let self else { return }
             self.ocrPanel?.removeFromSuperview()
@@ -3196,6 +3352,168 @@ extension SelectionOptionsBar: NSTextFieldDelegate {
     func controlTextDidChange(_ obj: Notification) {
         guard let field = obj.object as? NSTextField, field.tag == 505 else { return }
         _ = (target as? NSObject)?.perform(action, with: field)
+    }
+}
+
+/// 「问AI」二级动作条：点工具条「问AI」按钮后显示，挂在主工具条下方。
+/// 三个动作全部走已配置的大模型——提取文字（视觉）/ 要点提炼 / 翻译，
+/// 成功出结果时结果面板左下角带 Powered By 署名。
+/// 磨砂风格与主工具条、样式面板一致（.popover 材质 + chromeTint 叠加）。
+final class AIActionPanel: NSVisualEffectView {
+    private let chipViews: [AIActionChip]
+
+    init(target: AnyObject, action: Selector) {
+        let chips: [(Int, NSImage?, String)] = [
+            (701, Self.templateIcon(ScreenshotSelectionSurfaceView.art("OCR")), L10n.tr("editor.askAI.action.ocr")),
+            (702, Self.templateIcon(NSImage(systemSymbolName: "sparkles", accessibilityDescription: nil)), L10n.tr("editor.askAI.action.summarize")),
+            (703, Self.templateIcon(ScreenshotSelectionSurfaceView.art("Translate")), L10n.tr("editor.askAI.action.translate")),
+        ]
+        chipViews = chips.map { AIActionChip(tag: $0.0, icon: $0.1, title: $0.2, target: target, action: action) }
+
+        super.init(frame: .zero)
+        material = .popover
+        blendingMode = .withinWindow
+        state = .active
+        wantsLayer = true
+        layer?.cornerRadius = 12
+        layer?.masksToBounds = true
+        layer?.borderWidth = 1
+        layer?.borderColor = NSColor.separatorColor.cgColor
+
+        let tint = NSView()
+        tint.wantsLayer = true
+        tint.layer?.backgroundColor = SelectionToolbar.chromeTint.cgColor
+        tint.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(tint)
+        NSLayoutConstraint.activate([
+            tint.topAnchor.constraint(equalTo: topAnchor),
+            tint.bottomAnchor.constraint(equalTo: bottomAnchor),
+            tint.leadingAnchor.constraint(equalTo: leadingAnchor),
+            tint.trailingAnchor.constraint(equalTo: trailingAnchor),
+        ])
+
+        let stack = NSStackView()
+        stack.orientation = .horizontal
+        stack.spacing = 6
+        stack.edgeInsets = NSEdgeInsets(top: 7, left: 10, bottom: 7, right: 10)
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        chipViews.forEach { stack.addArrangedSubview($0) }
+        addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.topAnchor.constraint(equalTo: topAnchor),
+            stack.bottomAnchor.constraint(equalTo: bottomAnchor),
+            stack.leadingAnchor.constraint(equalTo: leadingAnchor),
+            stack.trailingAnchor.constraint(equalTo: trailingAnchor),
+        ])
+    }
+
+    required init?(coder: NSCoder) { fatalError("not used") }
+
+    /// 线稿 PNG / SF 符号转 template 图：NSImageView 用 contentTintColor 着色，
+    /// 外观切换时重新解析 labelColor，两种主题下都清晰。
+    private static func templateIcon(_ image: NSImage?) -> NSImage? {
+        guard let image else { return nil }
+        let template = image.copy() as? NSImage ?? image
+        template.isTemplate = true
+        return template
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        refreshForAppearance()
+    }
+
+    /// 同 SelectionOptionsBar：按应用当前外观重新解析颜色并标记整树重绘
+    func refreshForAppearance(_ appearance: NSAppearance? = nil) {
+        let targetAppearance = appearance ?? NSApp.effectiveAppearance
+        applyAppearanceRecursively(targetAppearance)
+        targetAppearance.performAsCurrentDrawingAppearance {
+            self.layer?.borderColor = NSColor.separatorColor.cgColor
+            chipViews.forEach { chip in
+                chip.iconView.contentTintColor = .labelColor
+                chip.labelField.textColor = .labelColor
+            }
+        }
+        invalidateDisplayRecursively()
+    }
+}
+
+/// 二级条里的胶囊按钮：圆角底 + 图标 + 文字，hover 高亮，点击触发 target/action。
+final class AIActionChip: NSView {
+    let chipTag: Int
+    let iconView = NSImageView()
+    let labelField: NSTextField
+    private weak var chipTarget: AnyObject?
+    private let chipAction: Selector
+    private var trackingArea: NSTrackingArea?
+
+    init(tag: Int, icon: NSImage?, title: String, target: AnyObject?, action: Selector) {
+        self.chipTag = tag
+        self.chipTarget = target
+        self.chipAction = action
+        let label = NSTextField(labelWithString: title)
+        label.font = .systemFont(ofSize: 12, weight: .medium)
+        label.textColor = .labelColor
+        self.labelField = label
+        super.init(frame: .zero)
+        wantsLayer = true
+        layer?.cornerRadius = 8
+        toolTip = title
+
+        if let icon {
+            iconView.image = icon
+            iconView.imageScaling = .scaleProportionallyUpOrDown
+            iconView.contentTintColor = .labelColor
+            iconView.translatesAutoresizingMaskIntoConstraints = false
+            addSubview(iconView)
+            addSubview(labelField)
+            NSLayoutConstraint.activate([
+                iconView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
+                iconView.centerYAnchor.constraint(equalTo: centerYAnchor),
+                iconView.widthAnchor.constraint(equalToConstant: 15),
+                iconView.heightAnchor.constraint(equalToConstant: 15),
+                labelField.leadingAnchor.constraint(equalTo: iconView.trailingAnchor, constant: 5),
+                labelField.centerYAnchor.constraint(equalTo: centerYAnchor),
+                labelField.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
+                heightAnchor.constraint(equalToConstant: 30),
+            ])
+        } else {
+            addSubview(labelField)
+            NSLayoutConstraint.activate([
+                labelField.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
+                labelField.centerYAnchor.constraint(equalTo: centerYAnchor),
+                labelField.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
+                heightAnchor.constraint(equalToConstant: 30),
+            ])
+        }
+    }
+
+    required init?(coder: NSCoder) { fatalError("not used") }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let trackingArea { removeTrackingArea(trackingArea) }
+        let area = NSTrackingArea(
+            rect: bounds,
+            options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+            owner: self
+        )
+        addTrackingArea(area)
+        trackingArea = area
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            layer?.backgroundColor = NSColor.labelColor.withAlphaComponent(0.08).cgColor
+        }
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        layer?.backgroundColor = nil
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        _ = chipTarget?.perform(chipAction, with: self)
     }
 }
 

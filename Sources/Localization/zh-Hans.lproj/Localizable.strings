@@ -337,6 +337,11 @@
 "editor.askAI.result.title" = "问AI";
 "editor.askAI.failed" = "AI 请求失败";
 "editor.askAI.prompt" = "请分析这段内容：总结要点，指出关键信息；如有错误或风险请一并指出。直接输出分析结果。";
+"editor.askAI.action.ocr" = "提取文字";
+"editor.askAI.action.summarize" = "要点提炼";
+"editor.askAI.action.translate" = "翻译";
+"editor.askAI.summarizePrompt" = "请提炼以下文字的要点，用简洁的条目列出。只输出条目列表，不要多余说明。";
+"editor.askAI.translatePrompt" = "请将以下文本翻译成%1$@，只输出译文，不要解释；若文本已是%1$@，请翻译成中文。";
 "editor.tool.pin" = "钉在屏幕";
 "editor.copy" = "复制";
 "editor.highlight.placeholder" = "最多输入 16 个字符";

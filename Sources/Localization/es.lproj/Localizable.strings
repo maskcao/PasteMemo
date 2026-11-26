@@ -145,6 +145,11 @@
 "editor.askAI.result.title" = "Preguntar a la IA";
 "editor.askAI.failed" = "Error de solicitud de IA";
 "editor.askAI.prompt" = "Analiza este contenido: resume los puntos clave, destaca la información importante y señala cualquier error o riesgo. Muestra directamente el resultado del análisis.";
+"editor.askAI.action.ocr" = "Extraer texto";
+"editor.askAI.action.summarize" = "Puntos clave";
+"editor.askAI.action.translate" = "Traducir";
+"editor.askAI.summarizePrompt" = "Extrae los puntos clave del siguiente texto y entrégalos de forma concisa en viñetas. Muestra solo la lista.";
+"editor.askAI.translatePrompt" = "Traduce el siguiente texto a %1$@. Muestra solo la traducción, sin explicaciones. Si el texto ya está en %1$@, tradúcelo al chino.";
 "editor.tool.pin" = "Fijar en pantalla";
 "editor.copy" = "Copiar";
 "editor.highlight.placeholder" = "Máx. 16 caracteres";

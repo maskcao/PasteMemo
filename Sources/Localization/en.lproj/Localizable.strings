@@ -337,6 +337,11 @@
 "editor.askAI.result.title" = "Ask AI";
 "editor.askAI.failed" = "AI request failed";
 "editor.askAI.prompt" = "Analyze this content: summarize the key points and highlight the important information; point out any errors or risks as well. Output the analysis directly.";
+"editor.askAI.action.ocr" = "Extract text";
+"editor.askAI.action.summarize" = "Key points";
+"editor.askAI.action.translate" = "Translate";
+"editor.askAI.summarizePrompt" = "Extract the key points from the following text. List them concisely as short bullet points. Output only the bullet list.";
+"editor.askAI.translatePrompt" = "Translate the following text into %1$@. Output only the translation, no explanation. If the text is already in %1$@, translate it into Chinese.";
 "editor.tool.pin" = "Pin to screen";
 "editor.copy" = "Copy";
 "editor.highlight.placeholder" = "Up to 16 characters";

@@ -145,6 +145,11 @@
 "editor.askAI.result.title" = "AI에게 질문";
 "editor.askAI.failed" = "AI 요청 실패";
 "editor.askAI.prompt" = "이 내용을 분석해 주세요. 요점을 정리하고 핵심 정보를 짚어주고, 오류나 위험이 있다면 함께 지적해 주세요. 분석 결과만 출력해 주세요.";
+"editor.askAI.action.ocr" = "텍스트 추출";
+"editor.askAI.action.summarize" = "핵심 요약";
+"editor.askAI.action.translate" = "번역";
+"editor.askAI.summarizePrompt" = "아래 텍스트의 핵심을 간결한箇목 목록으로 요약하세요. 목록만 출력하세요.";
+"editor.askAI.translatePrompt" = "아래 텍스트를 %1$@(으)로 번역하세요. 설명 없이 번역 결과만 출력하세요. 이미 %1$@인 경우 중국어로 번역하세요.";
 "editor.tool.pin" = "화면에 고정";
 "editor.copy" = "복사";
 "editor.highlight.placeholder" = "최대 16자";

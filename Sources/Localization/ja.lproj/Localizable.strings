@@ -153,6 +153,11 @@
 "editor.askAI.result.title" = "AIに質問";
 "editor.askAI.failed" = "AIリクエストに失敗しました";
 "editor.askAI.prompt" = "この内容を分析してください。要点をまとめ、重要な情報を指摘し、誤りやリスクがあれば指摘してください。分析結果のみを出力してください。";
+"editor.askAI.action.ocr" = "文字抽出";
+"editor.askAI.action.summarize" = "要点整理";
+"editor.askAI.action.translate" = "翻訳";
+"editor.askAI.summarizePrompt" = "以下のテキストの要点を抽出し、短い箇条書きで簡潔に列挙してください。箇条書きのみ出力し、余計な説明は不要です。";
+"editor.askAI.translatePrompt" = "以下のテキストを%1$@に翻訳してください。説明なしで翻訳結果のみを出力してください。テキストが既に%1$@の場合は中国語に翻訳してください。";
 "editor.tool.pin" = "画面にピン留め";
 "editor.copy" = "コピー";
 "editor.highlight.placeholder" = "16文字まで";

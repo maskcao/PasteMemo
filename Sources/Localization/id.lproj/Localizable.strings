@@ -310,6 +310,11 @@
 "editor.askAI.result.title" = "Tanya AI";
 "editor.askAI.failed" = "Permintaan AI gagal";
 "editor.askAI.prompt" = "Analisis konten ini: rangkum poin-poin penting, soroti informasi utama, dan tunjukkan kesalahan atau risiko jika ada. Tampilkan hasil analisisnya secara langsung.";
+"editor.askAI.action.ocr" = "Ekstrak teks";
+"editor.askAI.action.summarize" = "Poin utama";
+"editor.askAI.action.translate" = "Terjemahkan";
+"editor.askAI.summarizePrompt" = "Ambil poin-poin utama dari teks di bawah dan susun secara ringkas dalam bentuk poin. Tampilkan hanya daftarnya.";
+"editor.askAI.translatePrompt" = "Terjemahkan teks berikut ke %1$@. Tampilkan hanya terjemahannya, tanpa penjelasan. Jika teks sudah dalam %1$@, terjemahkan ke bahasa Mandarin.";
 "editor.tool.pin" = "Sematkan ke layar";
 "editor.copy" = "Salin";
 "editor.highlight.placeholder" = "Maks. 16 karakter";
