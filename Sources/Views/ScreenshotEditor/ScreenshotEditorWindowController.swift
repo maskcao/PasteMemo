@@ -15,6 +15,9 @@ final class ScreenshotEditorWindowController: NSObject, NSWindowDelegate {
     /// 让 ScreenshotEditorView 的 @State（viewModel/图片）重新用新图初始化——
     /// 否则单例窗口复用旧 state，窗口关闭过一次后再打开就是空图（0×0）
     private var sessionID = UUID()
+    /// 会话前最前台应用：编辑器 show() 会激活本应用，「复制到剪贴板」收尾时
+    /// 把焦点还回去（RDP 客户端失活期间单击被吞、滚轮变缩放）
+    private var restoredApp: NSRunningApplication?
 
     static func present(item: ClipItem) {
         guard let data = item.imageData, let image = NSImage(data: data) else { return }
@@ -27,6 +30,7 @@ final class ScreenshotEditorWindowController: NSObject, NSWindowDelegate {
     }
 
     private func show(image: NSImage) {
+        restoredApp = NSWorkspace.shared.frontmostApplication
         currentImage = image
         let window = ensureWindow()
         sessionID = UUID()
@@ -83,6 +87,10 @@ final class ScreenshotEditorWindowController: NSObject, NSWindowDelegate {
         pasteboard.clearContents()
         pasteboard.setData(pngData, forType: .png)
         ToastCenter.shared.show(ToastDescriptor(message: L10n.tr("action.copied"), icon: .success))
+        if let app = restoredApp {
+            AppFocusRestorer.restore(app)
+        }
+        restoredApp = nil
         window?.close()
     }
 

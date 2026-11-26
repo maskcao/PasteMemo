@@ -217,10 +217,14 @@ final class ScreenshotSelectionController: NSObject {
             NSApp.setActivationPolicy(.regular)
         }
         // 把焦点还给截图前的应用（本应用自身除外）：
-        // RDP 客户端失活期间鼠标事件不会进远端会话，这是「截图后远程主机点不动」的根因
-        if let app = restoredApp,
-           app.processIdentifier != NSRunningApplication.current.processIdentifier {
-            app.activate(from: NSRunningApplication.current, options: [.activateAllWindows])
+        // RDP 客户端失活期间：单击被 macOS 截去激活窗口、滚轮走本地缩放而非远端滚动，
+        // 所以必须把焦点真正交还。setActivationPolicy(.regular) 可能触发系统重新
+        // 激活 PasteMemo 自身，同步 activate 会被压过——用 async 排到下一轮 runloop，
+        // 收尾时还有 Toast 面板上屏、剪贴板监听等动作可能延迟激活本应用，
+        // 同步或单轮 async 的 activate 会被压过（表现为 RDP 单击被吞、滚轮变缩放）。
+        // 恢复器内部「延迟 → 校验 → 重试」，直到前台真正归位。
+        if let app = restoredApp {
+            AppFocusRestorer.restore(app)
         }
         restoredApp = nil
     }
