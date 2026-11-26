@@ -3364,9 +3364,9 @@ final class AIActionPanel: NSVisualEffectView {
 
     init(target: AnyObject, action: Selector) {
         let chips: [(Int, NSImage?, String)] = [
-            (701, Self.templateIcon(ScreenshotSelectionSurfaceView.art("OCR")), L10n.tr("editor.askAI.action.ocr")),
+            (701, Self.templateIcon(ToolbarButton.art("OCR")), L10n.tr("editor.askAI.action.ocr")),
             (702, Self.templateIcon(NSImage(systemSymbolName: "sparkles", accessibilityDescription: nil)), L10n.tr("editor.askAI.action.summarize")),
-            (703, Self.templateIcon(ScreenshotSelectionSurfaceView.art("Translate")), L10n.tr("editor.askAI.action.translate")),
+            (703, Self.templateIcon(ToolbarButton.art("Translate")), L10n.tr("editor.askAI.action.translate")),
         ]
         chipViews = chips.map { AIActionChip(tag: $0.0, icon: $0.1, title: $0.2, target: target, action: action) }
 
