@@ -3652,7 +3652,12 @@ final class OCRResultPanel: NSView {
         addSubview(closeButton)
 
         // 正文放进滚动区：文本较长时不能溢出卡片，也不能只显示一半。
-        // documentView 用 frame 布局（不用 Auto Layout），这是 NSScrollView 最稳的用法。
+        // 文档视图一律走 Auto Layout：旧写法（手工 frame + autoresizingMask）在
+        // 滚动区被 Auto Layout 铺开后，clip view 会对文档视图做 autoresize，
+        // 宽度被撑成两倍，文字按 2 倍宽排版——看起来就是「不换行」。
+        final class FlippedDocView: NSView {
+            override var isFlipped: Bool { true }
+        }
         let contentWidth: CGFloat = 372
         let body = NSTextField(wrappingLabelWithString: text)
         body.isSelectable = true
@@ -3663,18 +3668,29 @@ final class OCRResultPanel: NSView {
         body.textColor = .labelColor
         body.maximumNumberOfLines = 0
         body.lineBreakMode = .byWordWrapping
-        body.preferredMaxLayoutWidth = contentWidth
-        let needed = body.sizeThatFits(NSSize(width: contentWidth, height: CGFloat.greatestFiniteMagnitude)).height
-        body.frame = NSRect(x: 0, y: 0, width: contentWidth, height: max(ceil(needed) + 4, 24))
-        body.autoresizingMask = [.width]
 
         let scroll = NSScrollView(frame: .zero)
-        scroll.documentView = body
         scroll.hasVerticalScroller = true
+        scroll.hasHorizontalScroller = false
         scroll.drawsBackground = false
         scroll.borderType = .noBorder
         scroll.autohidesScrollers = true
         scroll.translatesAutoresizingMaskIntoConstraints = false
+
+        let document = FlippedDocView()
+        document.translatesAutoresizingMaskIntoConstraints = false
+        scroll.documentView = document
+        body.translatesAutoresizingMaskIntoConstraints = false
+        document.addSubview(body)
+        NSLayoutConstraint.activate([
+            body.topAnchor.constraint(equalTo: document.topAnchor),
+            body.leadingAnchor.constraint(equalTo: document.leadingAnchor),
+            body.trailingAnchor.constraint(equalTo: document.trailingAnchor),
+            body.bottomAnchor.constraint(equalTo: document.bottomAnchor),
+            // 文档宽度 = 滚动可视区宽度（自动隐藏竖向滚动条时正好 372），
+            // 钉死宽度才能触发换行；高度由 label 内容撑开
+            document.widthAnchor.constraint(equalTo: scroll.contentView.widthAnchor),
+        ])
         addSubview(scroll)
 
         let copyButton = NSButton(title: L10n.tr("action.copy"), target: self, action: #selector(copyClicked))
