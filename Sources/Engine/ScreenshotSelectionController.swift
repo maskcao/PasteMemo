@@ -1079,28 +1079,7 @@ final class ScreenshotSelectionSurfaceView: NSView {
             return
         }
 
-        guard let control = sender as? NSControl else {
-            // 「问AI」二级条的胶囊按钮是 NSView（非 NSControl），单独路由
-            if let chip = sender as? AIActionChip {
-                switch chip.chipTag {
-                case 701:
-                    aiActionPanelVisible = false
-                    needsLayout = true
-                    aiExtractText()
-                case 702:
-                    aiActionPanelVisible = false
-                    needsLayout = true
-                    aiSummarize()
-                case 703:
-                    aiActionPanelVisible = false
-                    needsLayout = true
-                    aiTranslate()
-                default:
-                    break
-                }
-            }
-            return
-        }
+        guard let control = sender as? NSControl else { return }
 
         if let slider = control as? NSSlider {
             switch control.tag {
@@ -1120,6 +1099,19 @@ final class ScreenshotSelectionSurfaceView: NSView {
         }
 
         switch control.tag {
+        // 「问AI」二级动作条：提取文字（视觉）/ 要点提炼 / 翻译
+        case 701:
+            aiActionPanelVisible = false
+            needsLayout = true
+            aiExtractText()
+        case 702:
+            aiActionPanelVisible = false
+            needsLayout = true
+            aiSummarize()
+        case 703:
+            aiActionPanelVisible = false
+            needsLayout = true
+            aiTranslate()
         case 15:
             toggleAIActionPanel()
         case 1:
@@ -3360,15 +3352,21 @@ extension SelectionOptionsBar: NSTextFieldDelegate {
 /// 成功出结果时结果面板左下角带 Powered By 署名。
 /// 磨砂风格与主工具条、样式面板一致（.popover 材质 + chromeTint 叠加）。
 final class AIActionPanel: NSVisualEffectView {
-    private let chipViews: [AIActionChip]
+    private let buttons: [ToolbarButton]
 
     init(target: AnyObject, action: Selector) {
-        let chips: [(Int, NSImage?, String)] = [
-            (701, Self.templateIcon(ToolbarButton.art("OCR")), L10n.tr("editor.askAI.action.ocr")),
-            (702, Self.templateIcon(NSImage(systemSymbolName: "sparkles", accessibilityDescription: nil)), L10n.tr("editor.askAI.action.summarize")),
-            (703, Self.templateIcon(ToolbarButton.art("Translate")), L10n.tr("editor.askAI.action.translate")),
+        // 与主工具条完全同款：纯图标按钮，悬停 0.35s 弹文字提示（HoverTipPanel）
+        let specs: [(Int, ToolbarButton.Look, String)] = [
+            (701, .asset("OCR"), L10n.tr("editor.askAI.action.ocr")),
+            (702, .symbol("sparkles"), L10n.tr("editor.askAI.action.summarize")),
+            (703, .asset("Translate"), L10n.tr("editor.askAI.action.translate")),
         ]
-        chipViews = chips.map { AIActionChip(tag: $0.0, icon: $0.1, title: $0.2, target: target, action: action) }
+        buttons = specs.map { spec in
+            let button = ToolbarButton(look: spec.1, tooltip: spec.2, target: target, action: action)
+            button.tag = spec.0
+            button.size = NSSize(width: 31, height: 31)
+            return button
+        }
 
         super.init(frame: .zero)
         material = .popover
@@ -3394,10 +3392,11 @@ final class AIActionPanel: NSVisualEffectView {
 
         let stack = NSStackView()
         stack.orientation = .horizontal
-        stack.spacing = 6
-        stack.edgeInsets = NSEdgeInsets(top: 7, left: 10, bottom: 7, right: 10)
+        stack.alignment = .centerY
+        stack.spacing = 3
+        stack.edgeInsets = NSEdgeInsets(top: 6, left: 9, bottom: 6, right: 9)
         stack.translatesAutoresizingMaskIntoConstraints = false
-        chipViews.forEach { stack.addArrangedSubview($0) }
+        buttons.forEach { stack.addArrangedSubview($0) }
         addSubview(stack)
         NSLayoutConstraint.activate([
             stack.topAnchor.constraint(equalTo: topAnchor),
@@ -3408,15 +3407,6 @@ final class AIActionPanel: NSVisualEffectView {
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
-
-    /// 线稿 PNG / SF 符号转 template 图：NSImageView 用 contentTintColor 着色，
-    /// 外观切换时重新解析 labelColor，两种主题下都清晰。
-    private static func templateIcon(_ image: NSImage?) -> NSImage? {
-        guard let image else { return nil }
-        let template = image.copy() as? NSImage ?? image
-        template.isTemplate = true
-        return template
-    }
 
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
@@ -3429,91 +3419,8 @@ final class AIActionPanel: NSVisualEffectView {
         applyAppearanceRecursively(targetAppearance)
         targetAppearance.performAsCurrentDrawingAppearance {
             self.layer?.borderColor = NSColor.separatorColor.cgColor
-            chipViews.forEach { chip in
-                chip.iconView.contentTintColor = .labelColor
-                chip.labelField.textColor = .labelColor
-            }
         }
         invalidateDisplayRecursively()
-    }
-}
-
-/// 二级条里的胶囊按钮：圆角底 + 图标 + 文字，hover 高亮，点击触发 target/action。
-final class AIActionChip: NSView {
-    let chipTag: Int
-    let iconView = NSImageView()
-    let labelField: NSTextField
-    private weak var chipTarget: AnyObject?
-    private let chipAction: Selector
-    private var trackingArea: NSTrackingArea?
-
-    init(tag: Int, icon: NSImage?, title: String, target: AnyObject?, action: Selector) {
-        self.chipTag = tag
-        self.chipTarget = target
-        self.chipAction = action
-        let label = NSTextField(labelWithString: title)
-        label.font = .systemFont(ofSize: 12, weight: .medium)
-        label.textColor = .labelColor
-        self.labelField = label
-        super.init(frame: .zero)
-        wantsLayer = true
-        layer?.cornerRadius = 8
-        toolTip = title
-
-        if let icon {
-            iconView.image = icon
-            iconView.imageScaling = .scaleProportionallyUpOrDown
-            iconView.contentTintColor = .labelColor
-            iconView.translatesAutoresizingMaskIntoConstraints = false
-            addSubview(iconView)
-            addSubview(labelField)
-            NSLayoutConstraint.activate([
-                iconView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
-                iconView.centerYAnchor.constraint(equalTo: centerYAnchor),
-                iconView.widthAnchor.constraint(equalToConstant: 15),
-                iconView.heightAnchor.constraint(equalToConstant: 15),
-                labelField.leadingAnchor.constraint(equalTo: iconView.trailingAnchor, constant: 5),
-                labelField.centerYAnchor.constraint(equalTo: centerYAnchor),
-                labelField.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
-                heightAnchor.constraint(equalToConstant: 30),
-            ])
-        } else {
-            addSubview(labelField)
-            NSLayoutConstraint.activate([
-                labelField.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
-                labelField.centerYAnchor.constraint(equalTo: centerYAnchor),
-                labelField.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
-                heightAnchor.constraint(equalToConstant: 30),
-            ])
-        }
-    }
-
-    required init?(coder: NSCoder) { fatalError("not used") }
-
-    override func updateTrackingAreas() {
-        super.updateTrackingAreas()
-        if let trackingArea { removeTrackingArea(trackingArea) }
-        let area = NSTrackingArea(
-            rect: bounds,
-            options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
-            owner: self
-        )
-        addTrackingArea(area)
-        trackingArea = area
-    }
-
-    override func mouseEntered(with event: NSEvent) {
-        effectiveAppearance.performAsCurrentDrawingAppearance {
-            layer?.backgroundColor = NSColor.labelColor.withAlphaComponent(0.08).cgColor
-        }
-    }
-
-    override func mouseExited(with event: NSEvent) {
-        layer?.backgroundColor = nil
-    }
-
-    override func mouseDown(with event: NSEvent) {
-        _ = chipTarget?.perform(chipAction, with: self)
     }
 }
 
