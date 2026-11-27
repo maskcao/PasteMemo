@@ -556,9 +556,7 @@ final class ScreenshotSelectionSurfaceView: NSView {
             return
         }
         toolbar.isHidden = false
-        // 二级条（问AI动作条）和样式条互斥：二级条展开时收起样式条，
-        // 避免样式条的磨砂壳从二级条两侧露出（之前看到的「空白圆角框」）
-        optionsBar.isHidden = activeTool == nil || aiActionPanelVisible
+        optionsBar.isHidden = activeTool == nil
         aiActionPanel.isHidden = !aiActionPanelVisible
         let mainSize = toolbar.fittingSize
         let optionSize = optionsBar.isHidden ? .zero : optionsBar.fittingSize
@@ -589,12 +587,8 @@ final class ScreenshotSelectionSurfaceView: NSView {
             nextY = y + mainSize.height + gap + optionSize.height
         }
         if !aiActionPanel.isHidden {
-            // 对齐工具条里「问AI」按钮正下方（按钮中心），不再按选区居中
-            let aiCenter = toolbar?.askAIButtonRect(in: self).map {
-                $0.midX
-            } ?? sel.midX
             aiActionPanel.frame = NSRect(
-                x: clampX(aiSize.width, center: aiCenter), y: nextY + gap,
+                x: clampX(aiSize.width, center: sel.midX), y: nextY + gap,
                 width: aiSize.width, height: aiSize.height
             )
             nextY += gap + aiSize.height
@@ -2792,7 +2786,6 @@ final class SelectionToolbar: NSVisualEffectView {
     private var currentShapeAsset = "Shape"
     private var modeScreenshotButton: ToolbarButton!
     private var startLongButton: ToolbarButton!
-    private(set) var askAIButton: ToolbarButton!
     private let chromeTintView = NSView()
 
     /// 磨砂条叠加色：随系统深浅色自适应。
@@ -2861,7 +2854,7 @@ final class SelectionToolbar: NSVisualEffectView {
 
         // 顺序：问AI / 形状 / 箭头 / 文字 / 画笔 / 序号 / 更多
         // | 文字识别 | 撤销 / 重做 / 保存 / 钉图 / 复制 / 关闭 / 完成
-        askAIButton = add(15, .symbol("sparkles"), L10n.tr("editor.tool.askAI"))
+        _ = add(15, .symbol("sparkles"), L10n.tr("editor.tool.askAI"))
         stack.addArrangedSubview(Self.divider())
         shapeButton = add(1, .asset("Shape"), L10n.tr("editor.tool.rectangle"))
         _ = add(3, .asset("Arrow"), L10n.tr("editor.tool.arrow"))
@@ -2963,12 +2956,6 @@ final class SelectionToolbar: NSVisualEffectView {
         case .highlighter: return 8
         case nil: return 0
         }
-    }
-
-    /// 「问AI」按钮在调用方坐标系中的位置（二级面板对齐用）
-    func askAIButtonRect(in view: NSView) -> NSRect? {
-        guard let button = askAIButton, let superview = button.superview else { return nil }
-        return view.convert(button.frame, from: superview)
     }
 }
 
